@@ -2,15 +2,15 @@ import os
 
 
 class Config:
-    SECRET_KEY = os.getenv("SECRET_KEY", "default_secret")
-    DEBUG = os.getenv("DEBUG", True)  # Set to False in production
+    db_user = os.getenv("DB_USER", "user")
+    db_password = os.getenv("DB_PASSWORD", "s3cr3t")
+    db_host = os.getenv("DB_HOST", "host.docker.internal")
+    db_port = os.getenv("DB_PORT", "5432")
+    db_name = os.getenv("DB_NAME", "annotation_db")
+
+    DEBUG = os.getenv("DEBUG", True)
+
     SQLALCHEMY_DATABASE_URI = (
-        "postgresql+psycopg2://user:s3cr3t@host.docker.internal:5432/annotation_db"
+        f"postgresql+psycopg2://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
-
-
-class DatabaseEnumConfig:
-    document_states = ["NEW", "IN_PROGRESS", "FINISHED"]
-    document_edit_states = ["MENTIONS", "ENTITIES", "RELATIONS", "FINISHED"]
-    modelling_languages = ["BPMN"]

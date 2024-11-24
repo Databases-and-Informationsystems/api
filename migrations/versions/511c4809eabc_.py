@@ -1,7 +1,7 @@
 """empty message
 
 Revision ID: 511c4809eabc
-Revises: 20b00a71f4ee
+Revises: 3e804134d032
 Create Date: 2024-11-21 13:08:18.578592
 
 """
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = '511c4809eabc'
-down_revision = '20b00a71f4ee'
+down_revision = '3e804134d032'
 branch_labels = None
 depends_on = None
 
@@ -57,6 +57,45 @@ def upgrade():
         batch_op.drop_constraint('Schema_modellingLanguage_fkey', type_='foreignkey')
         batch_op.create_foreign_key(None, 'ModellingLanguage', ['modellingLanguage_id'], ['id'])
         batch_op.drop_column('modellingLanguage')
+
+    # Insert hardcoded enum values into respective tables
+    op.bulk_insert(
+        sa.table(
+            'DocumentState',
+            sa.column('id', sa.Integer),
+            sa.column('type', sa.String)
+        ),
+        [
+            {'id': 1, 'type': 'NEW'},
+            {'id': 2, 'type': 'IN_PROGRESS'},
+            {'id': 3, 'type': 'FINISHED'}
+        ]
+    )
+
+    op.bulk_insert(
+        sa.table(
+            'DocumentEditState',
+            sa.column('id', sa.Integer),
+            sa.column('type', sa.String)
+        ),
+        [
+            {'id': 1, 'type': 'MENTIONS'},
+            {'id': 2, 'type': 'ENTITIES'},
+            {'id': 3, 'type': 'RELATIONS'},
+            {'id': 4, 'type': 'FINISHED'}
+        ]
+    )
+
+    op.bulk_insert(
+        sa.table(
+            'ModellingLanguage',
+            sa.column('id', sa.Integer),
+            sa.column('type', sa.String)
+        ),
+        [
+            {'id': 1, 'type': 'BPMN'}
+        ]
+    )
 
     # ### end Alembic commands ###
 

@@ -4,6 +4,12 @@
 You can choose between [Pycharm](https://www.jetbrains.com/de-de/pycharm/) (Professional Edition) and [VsCode](https://code.visualstudio.com/) as a development environment. 
 
 In the following steps, only the variant in the selected development environment needs to be executed.
+
+### Create local environment file
+```shell
+cp .env.EXAMPLE .env
+```
+
 ### Run Project
 
 Clone the [setup](https://github.com/Databases-and-Informationsystems/setup) project and follow the instructions

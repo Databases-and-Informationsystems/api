@@ -15,7 +15,7 @@
 
 # Prevent commits directly to main or master
 CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-if [[ "$CURRENT_BRANCH" == "main" || "$CURRENT_BRANCH" == "master" ]]; then
+if [[ "$CURRENT_BRANCH" == "main" || "$CURRENT_BRANCH" == "master" || "$CURRENT_BRANCH" == "develop" ]]; then
   echo "Direct commits to the '$CURRENT_BRANCH' branch are not allowed."
   echo "Please create a feature branch and commit your changes there."
   exit 1

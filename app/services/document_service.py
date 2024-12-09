@@ -2,19 +2,18 @@ from werkzeug.exceptions import NotFound
 
 from app.repositories.document_repository import DocumentRepository
 from app.services.user_service import UserService, user_service
-from app.services.team_service import TeamService, team_service
-from app.services.project_service import ProjectService, project_service
+from app.services.token_service import TokenService, token_service
 
 
 class DocumentService:
     __document_repository: DocumentRepository
     user_service: UserService
+    token_service: TokenService
 
-    def __init__(self, document_repository, user_service):
+    def __init__(self, document_repository, user_service, token_service):
         self.__document_repository = document_repository
         self.user_service = user_service
-        self.team_service = team_service
-        self.project_service = project_service
+        self.token_service = token_service
 
     def get_documents_by_project(self, project_id):
         return self.__document_repository.get_documents_by_project(project_id)
@@ -42,4 +41,4 @@ class DocumentService:
         return document_list, 200
 
 
-document_service = DocumentService(DocumentRepository(), user_service)
+document_service = DocumentService(DocumentRepository(), user_service, token_service)

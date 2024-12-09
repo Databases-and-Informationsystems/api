@@ -38,5 +38,10 @@ class ProjectService:
             200,
         )
 
+    def team_is_in_project(self, team_id, document_edit_id):
+        return team_id == self.__project_repository.get_team_id_by_document_edit_id(
+            document_edit_id
+        )
+
 
 project_service = ProjectService(ProjectRepository(), user_service, schema_service)

@@ -18,6 +18,10 @@ def create_app(config_class):
 
     api.init_app(app)
 
+    from .routes.mention_routes import ns
+
+    api.add_namespace(ns, path="/api")
+
     if not config_class.TESTING:
         from app.db import db
 

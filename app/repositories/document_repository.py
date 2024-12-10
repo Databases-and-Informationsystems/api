@@ -59,3 +59,16 @@ class DocumentRepository(BaseRepository):
             )
             .outerjoin(DocumentEditState, DocumentEditState.id == DocumentEdit.state_id)
         )
+
+
+class DocumentRepository:
+    def create_document(self, document_data):
+        """
+        Creates a new document in the database.
+        :param document_data: Dictionary containing document data
+        :return: The created document
+        """
+        new_document = Document(**document_data)
+        db.session.add(new_document)
+        db.session.commit()
+        return new_document

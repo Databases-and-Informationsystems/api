@@ -1,4 +1,4 @@
-from werkzeug.exceptions import NotFound
+from werkzeug.exceptions import NotFound, Forbidden, InternalServerError
 
 from app.repositories.document_repository import DocumentRepository
 from app.services.user_service import UserService, user_service
@@ -43,3 +43,44 @@ class DocumentService:
 
 
 document_service = DocumentService(DocumentRepository(), user_service)
+
+
+class DocumentService:
+    def __init__(self, document_repository: DocumentRepository, project_service):
+        """
+        Initializes the DocumentService with required dependencies.
+        :param document_repository: Instance of the associated repository
+        :param project_service: Instance of the ProjectService
+        """
+        self.document_repository = document_repository
+        self.project_service = project_service
+
+    def upload_document(self, user_id, project_id, document_name, document_content):
+        """
+        Uploads a document after verifying the user's membership in the project.
+        :param user_id: ID of the user
+        :param project_id: ID of the project
+        :param document_name: Name of the document
+        :param document_content: Content of the document
+        :return: The created document (with ID and other details)
+        :raises Forbidden: If the user is not allowed to upload the document
+        :raises InternalServerError: If an error occurs while saving the document
+        """
+        # Verify user's membership in the project
+        if not self.project_service.is_user_in_project(user_id, project_id):
+            raise Forbidden("User is not authorized to upload this document.")
+
+        # Prepare document data
+        document_data = {
+            "name": document_name,
+            "content": document_content,
+            "creator_id": user_id,
+            "project_id": project_id,
+        }
+
+        # Save the document and return it
+        try:
+            return self.document_repository.create_document(document_data)
+        except Exception as e:
+            raise InternalServerError(f"Error saving the document: {str(e)}")
+

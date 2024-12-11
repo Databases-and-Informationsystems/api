@@ -58,7 +58,7 @@ class MentionService:
             for mention in mentions
         ]
 
-        return {"mentions": mentions_list}, 200
+        return {"mentions": mentions_list}
 
     def create_mentions(self, data):
 
@@ -99,7 +99,7 @@ class MentionService:
         for token_id in data["token_ids"]:
             self.token_mention_service.create_token_mention(token_id, mention.id)
 
-        return mention, 200
+        return mention
 
 
 mention_service = MentionService(

@@ -1,49 +1,34 @@
 from sqlalchemy import exc
-from werkzeug.exceptions import BadRequest, HTTPException
-
-from . import project
-from flask import request, jsonify
+from werkzeug.exceptions import BadRequest
+from flask_restx import Resource, Namespace
+from flask import request
 from app.services.project_service import project_service
+from app.dtos import project_input_dto, project_output_dto
+
+ns = Namespace("projects", description="Project related operations")
 
 
-@project.route("/", methods=["POST"])
-def create_project():
+@ns.route("/")
+@ns.response(400, "Invalid input")
+@ns.response(403, "Authorization required")
+@ns.response(404, "Data not found")
+class ProjectRoutes(Resource):
     service = project_service
-    try:
-        request_data = request.get_json()
 
-        if (
-            "user_id" not in request_data
-            or "team_id" not in request_data
-            or "name" not in request_data
-            or "schema_id" not in request_data
-        ):
-            raise BadRequest("User ID, Team Id, Projectname, Schema ID are required.")
-
-        user_id = request_data["user_id"]
-        team_id = request_data["team_id"]
-        schema_id = request_data["schema_id"]
+    @ns.doc(description="Create a new project")
+    @ns.expect(project_input_dto, validate=True)
+    @ns.marshal_with(project_output_dto)
+    def post(self):
         try:
-            user_id = int(user_id)
-            team_id = int(team_id)
-            schema_id = int(schema_id)
-        except:
-            raise BadRequest("User ID, Team ID, Schema ID must be a valid integer.")
+            request_data = request.get_json()
 
-        response, status = service.create_project(
-            user_id, team_id, schema_id, request_data["name"]
-        )
+            response = self.service.create_project(
+                request_data["team_id"],
+                request_data["schema_id"],
+                request_data["name"],
+            )
 
-        return jsonify(response), status
+            return response
 
-    except exc.IntegrityError as e:
-        return {"message": "Projectname already exists"}, 400
-
-    except HTTPException as e:
-        return {"message": str(e)}, e.code
-
-    except Exception as e:
-        return (
-            {"message": "An unexpected error occurred.", "details": str(e)},
-            500,
-        )
+        except exc.IntegrityError:
+            raise BadRequest("Projectname already exists")

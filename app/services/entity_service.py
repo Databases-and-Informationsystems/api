@@ -25,7 +25,7 @@ class EntityService:
             }
             for entity in entities
         ]
-        return {"entities": entity_list}, 200
+        return {"entities": entity_list}
 
 
 entity_service = EntityService(EntityRepository())

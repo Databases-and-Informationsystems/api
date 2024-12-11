@@ -18,36 +18,15 @@ class DocumentsFetchByUserTestCase(BaseTestCase):
         super().setUp()
         self.service = document_service
 
-    @patch.object(DocumentService, "get_documents_by_user")
-    def test_get_documents_by_user_bad_request(self, get_documents_mock):
-        # Mock the service to simulate no service call (validation fails early)
-        get_documents_mock.return_value = None
-
-        # Sending POST request with invalid user ID (non-integer)
-        payload = json.dumps({"user_id": "abcde"})
-        response = self.client.post(
-            "/api/documents/",
-            headers={"Content-Type": "application/json"},
-            data=payload,
-        )
-
-        # Assert the response is 400 for bad input
-        self.assertEqual(400, response.status_code)
-        response_data = response.json
-        self.assertEqual(
-            response.json.get("message"),
-            "400 Bad Request: User ID must be a valid integer.",
-        )
-
-    @patch.object(UserService, "check_authentication")
+    @patch.object(UserService, "get_logged_in_user_id")
     @patch.object(DocumentRepository, "get_documents_by_user")
     def test_get_documents_by_user_valid(
         self,
         get_documents_by_user_mock,
         check_authentication_mock,
     ):
-        # Mock the service to simulate no service call (validation fails early)
-        check_authentication_mock.return_value = "", 200
+
+        check_authentication_mock.return_value = 1
         mocked_return = namedtuple(
             "tuple",
             [
@@ -60,7 +39,7 @@ class DocumentsFetchByUserTestCase(BaseTestCase):
                 "project_name",
                 "team_id",
                 "team_name",
-                "type",
+                "schema_id",
             ],
         )
         get_documents_by_user_mock.return_value = [
@@ -74,17 +53,13 @@ class DocumentsFetchByUserTestCase(BaseTestCase):
                 "Project1",
                 1,
                 "Team1",
-                "NEW",
+                1,
             )
         ]
 
-        # Sending POST request with valid user ID
-        payload = json.dumps({"user_id": 1})
-
-        response = self.client.post(
+        response = self.client.get(
             "/api/documents/",
             headers={"Content-Type": "application/json"},
-            data=payload,
         )
 
         # Assert the response is 200 for valid call
@@ -102,7 +77,7 @@ class DocumentsFetchByUserTestCase(BaseTestCase):
                     "project_name": "Project1",
                     "team_id": 1,
                     "team_name": "Team1",
-                    "type": "NEW",
+                    "schema_id": 1,
                 }
             ],
         )

@@ -18,8 +18,8 @@ class ProjectService:
         self.user_service = user_service
         self.schema_service = schema_service
 
-    def create_project(self, user_id, team_id, schema_id, projectname):
-        self.user_service.check_authentication(user_id)
+    def create_project(self, team_id, schema_id, projectname):
+        user_id = self.user_service.get_logged_in_user_id()
         self.user_service.check_user_in_team(user_id, team_id)
         self.schema_service.check_schema_exists(schema_id)
         project = self.__project_repository.create_project(
@@ -28,15 +28,13 @@ class ProjectService:
             team_id,
             schema_id,
         )
-        return (
-            {
-                "project_id": project.id,
-                "project_name": project.name,
-                "project_team_id": project.team_id,
-                "project_schema_id": project.schema_id,
-            },
-            200,
-        )
+        return {
+            "id": project.id,
+            "name": project.name,
+            "team_id": project.team_id,
+            "schema_id": project.schema_id,
+            "creator_id": project.creator_id,
+        }
 
     def team_is_in_project(self, team_id, document_edit_id):
         return team_id == self.__project_repository.get_team_id_by_document_edit_id(

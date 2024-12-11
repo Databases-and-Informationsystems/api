@@ -1,32 +1,24 @@
-from flask import request, jsonify
-from . import relations
-from app.services.relation_services import RelationService
-from app.repositories.relation_repository import RelationRepository
-from werkzeug.exceptions import HTTPException, BadRequest
+from app.services.relation_services import relation_service
+from werkzeug.exceptions import BadRequest
+from flask_restx import Namespace, Resource
+from app.dtos import relation_output_list_dto
+
+ns = Namespace("relations", description="Relation related operations")
 
 
-@relations.route("/<document_edit_id>", methods=["GET"])
-def get_relations_by_document(document_edit_id):
-    relation_service = RelationService(RelationRepository())
-    try:
+@ns.route("/<int:document_edit_id>")
+@ns.doc(params={"document_edit_id": "A Document Edit ID"})
+@ns.response(400, "Invalid input")
+@ns.response(403, "Authorization required")
+@ns.response(404, "Data not found")
+class RelationQueryResource(Resource):
+    service = relation_service
+
+    @ns.doc(description="Get Relations of document annotation")
+    @ns.marshal_with(relation_output_list_dto)
+    def get(self, document_edit_id):
         if not document_edit_id:
             raise BadRequest("Document Edit ID is required.")
 
-        if not document_edit_id.isdigit():
-            raise BadRequest("Document Edit ID must be a valid integer.")
-
-        document_edit_id = int(document_edit_id)
-
-        response, status = relation_service.get_relations_by_document_edit(
-            document_edit_id
-        )
-        return jsonify(response), status
-
-    except HTTPException as e:
-        return jsonify({"message": str(e)}), e.code
-
-    except Exception as e:
-        return (
-            jsonify({"message": "An unexpected error occurred.", "details": str(e)}),
-            500,
-        )
+        response = self.service.get_relations_by_document_edit(document_edit_id)
+        return response

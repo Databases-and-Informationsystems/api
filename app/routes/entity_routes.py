@@ -1,33 +1,24 @@
-from flask import request, jsonify
-from . import entities
-from app.services.entity_service import EntityService
-from app.repositories.entity_repository import EntityRepository
-from werkzeug.exceptions import HTTPException, BadRequest
+from flask_restx import Namespace, Resource
+from app.services.entity_service import entity_service
+from werkzeug.exceptions import BadRequest
+from app.dtos import entity_output_list_dto
+
+ns = Namespace("entities", description="Entity related operations")
 
 
-@entities.route("/<document_edit_id>", methods=["GET"])
-def get_entities_by_document_edit(document_edit_id):
-    entity_service = EntityService(EntityRepository())
+@ns.route("/<int:document_edit_id>")
+@ns.doc(params={"document_edit_id": "A Document Edit ID"})
+@ns.response(400, "Invalid input")
+@ns.response(403, "Authorization required")
+@ns.response(404, "Data not found")
+class EntityQueryResource(Resource):
+    service = entity_service
 
-    try:
+    @ns.doc(description="Get Entities of document annotation")
+    @ns.marshal_with(entity_output_list_dto)
+    def get(self, document_edit_id):
         if not document_edit_id:
             raise BadRequest("Document Edit ID is required.")
 
-        if not document_edit_id.isdigit():
-            raise BadRequest("Document Edit ID must be a valid integer.")
-
-        document_edit_id = int(document_edit_id)
-
-        response, status = entity_service.get_entities_by_document_edit(
-            document_edit_id
-        )
-        return jsonify(response), status
-
-    except HTTPException as e:
-        return jsonify({"message": str(e)}), e.code
-
-    except Exception as e:
-        return (
-            jsonify({"message": "An unexpected error occurred.", "details": str(e)}),
-            500,
-        )
+        response = self.service.get_entities_by_document_edit(document_edit_id)
+        return response

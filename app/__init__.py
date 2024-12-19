@@ -10,17 +10,20 @@ def create_app(config_class):
     app.config.from_object(config_class)
 
     # Register blueprints
-    from .routes import main, project, mentions, relations
+    from .extension import main, api
 
     app.register_blueprint(main)
+    from app.routes.project_routes import ns as projects
+    from app.routes.mention_routes import ns as mentions
+    from app.routes.relation_routes import ns as relations
+    from app.routes.entity_routes import ns as entities
+    from app.routes.document_routes import ns as documents
 
-    from .extension import api
-
-    api.init_app(app)
-
-    from .routes.mention_routes import ns
-
-    api.add_namespace(ns, path="/api")
+    api.add_namespace(projects, path="/projects")
+    api.add_namespace(mentions, path="/mentions")
+    api.add_namespace(relations, path="/relations")
+    api.add_namespace(entities, path="/entities")
+    api.add_namespace(documents, path="/documents")
 
     if not config_class.TESTING:
         from app.db import db

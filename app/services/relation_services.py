@@ -31,7 +31,7 @@ class RelationService:
             for relation in relations
         ]
 
-        return {"relations": relation_list}, 200
+        return {"relations": relation_list}
 
 
-relation_service = RelationService(RelationRepository)
+relation_service = RelationService(RelationRepository())

@@ -53,10 +53,10 @@ class TestMentionResource(BaseTestCase):
 
         # Call the function
         response, status_code = self.service.create_mentions(mock_input_data)
-        print(response)
+
         # Assertions
         self.assertEqual(status_code, 200)
-        self.assertEqual(response[0]["id"], 1)
+        self.assertEqual(response["id"], 1)
 
     @patch.object(UserService, "get_logged_in_user_id")
     @patch.object(DocumentEditService, "get_user_id")

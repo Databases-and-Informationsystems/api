@@ -17,6 +17,7 @@ class Config:
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     TESTING = False
+    RESTX_MASK_SWAGGER = False
 
 
 class TestingConfig:

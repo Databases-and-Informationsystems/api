@@ -30,5 +30,8 @@ class UserService:
     def get_logged_in_user_team_id(self):
         return self.user_team_repository.get_user_team_id(self.get_logged_in_user_id())
 
+    def get_user_by_document_edit_id(self, document_edit_id):
+        return self.__user_repository.get_user_by_document_edit_id(document_edit_id)
+
 
 user_service = UserService(UserRepository(), UserTeamRepository())

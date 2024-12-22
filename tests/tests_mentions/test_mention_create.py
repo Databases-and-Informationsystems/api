@@ -20,7 +20,7 @@ class TestMentionResource(BaseTestCase):
 
     @patch.object(MentionRepository, "create_mention")
     @patch.object(TokenMentionService, "get_token_mention")
-    @patch.object(DocumentEditService, "get_user_id")
+    @patch.object(UserService, "get_user_by_document_edit_id")
     @patch.object(UserService, "get_logged_in_user_id")
     @patch.object(MentionRepository, "get_mentions_by_document_edit")
     def test_create_mentions_success(
@@ -59,7 +59,7 @@ class TestMentionResource(BaseTestCase):
         self.assertEqual(response["id"], 1)
 
     @patch.object(UserService, "get_logged_in_user_id")
-    @patch.object(DocumentEditService, "get_user_id")
+    @patch.object(UserService, "get_user_by_document_edit_id")
     def test_create_mentions_not_authorized(self, get_user_id, get_logged_in_user_id):
         # Mock input data
         mock_input_data = {
@@ -81,7 +81,7 @@ class TestMentionResource(BaseTestCase):
         get_user_id.assert_called_once_with(123)
 
     @patch.object(UserService, "get_logged_in_user_id")
-    @patch.object(DocumentEditService, "get_user_id")
+    @patch.object(UserService, "get_user_by_document_edit_id")
     @patch.object(TokenMentionService, "get_token_mention")
     @patch.object(MentionRepository, "get_mentions_by_document_edit")
     def test_create_mentions_duplicate_tokens(

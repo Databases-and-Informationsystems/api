@@ -100,3 +100,19 @@ relation_output_list_dto = api.model(
         "relations": fields.List(fields.Nested(relation_output_dto)),
     },
 )
+
+document_edit_input_dto = api.model(
+    "DocumentInput",
+    {
+        "document_id": fields.Integer(required=True, min=1),
+    },
+)
+
+document_edit_output_dto = api.model(
+    "DocumentEditOutput",
+    {
+        "id": fields.Integer,
+        "schema_id": fields.Integer,
+        "document_id": fields.Integer,
+    },
+)

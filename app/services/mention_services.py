@@ -3,10 +3,7 @@ from werkzeug.exceptions import BadRequest, NotFound, Conflict
 from app.repositories.mention_repository import MentionRepository
 from app.services.project_service import ProjectService, project_service
 from app.services.user_service import UserService, user_service
-from app.services.document_edit_service import (
-    DocumentEditService,
-    document_edit_service,
-)
+
 from app.services.token_mention_service import (
     token_mention_service,
     TokenMentionService,
@@ -18,7 +15,6 @@ class MentionService:
     token_mention_service: TokenMentionService
     user_service: UserService
     project_service: ProjectService
-    document_edit_service: DocumentEditService
 
     def __init__(
         self,
@@ -26,13 +22,11 @@ class MentionService:
         token_mention_service,
         user_service,
         project_service,
-        document_edit_service,
     ):
         self.__mention_repository = mention_repository
         self.token_mention_service = token_mention_service
         self.user_service = user_service
         self.project_service = project_service
-        self.document_edit_service = document_edit_service
 
     def get_mentions_by_document_edit(self, document_edit_id):
         if not isinstance(document_edit_id, int) or document_edit_id <= 0:
@@ -64,7 +58,7 @@ class MentionService:
 
         # check if user is allowed to access this document edit
         logged_in_user_id = user_service.get_logged_in_user_id()
-        document_edit_user_id = document_edit_service.get_user_id(
+        document_edit_user_id = user_service.get_user_by_document_edit_id(
             data["document_edit_id"]
         )
 
@@ -91,8 +85,8 @@ class MentionService:
 
         # save mention
         mention = self.__mention_repository.create_mention(
-            data["document_edit_id"],
-            data["tag"],
+            document_edit_id=data["document_edit_id"],
+            tag=data["tag"],
         )
 
         # save token mention
@@ -101,11 +95,31 @@ class MentionService:
 
         return mention
 
+    def copy_mention_recommendations_to_document_edit(
+        self,
+        document_recommendation_id_source,
+        document_edit_id_target,
+        document_recommendation_id_target,
+    ):
+        if document_recommendation_id_source is None:
+            return
+
+        mentions = self.__mention_repository.get_mentions_by_document_recommendation(
+            document_recommendation_id_source
+        )
+        if mentions:
+            for mention in mentions:
+                self.__mention_repository.create_mention(
+                    mention.tag,
+                    document_edit_id=document_edit_id_target,
+                    document_recommendation_id=document_recommendation_id_target,
+                    is_shown_recommendation=True,
+                )
+
 
 mention_service = MentionService(
     MentionRepository(),
     token_mention_service,
     user_service,
     project_service,
-    document_edit_service,
 )

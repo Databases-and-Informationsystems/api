@@ -40,5 +40,8 @@ class DocumentService:
         ]
         return document_list
 
+    def get_document_by_id(self, document_id):
+        return self.__document_repository.get_document_by_id(document_id)
+
 
 document_service = DocumentService(DocumentRepository(), user_service, token_service)

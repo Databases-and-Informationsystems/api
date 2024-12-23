@@ -12,3 +12,16 @@ class TeamRepository(BaseRepository):
             .filter(UserTeam.user_id == user_id)
             .all()
         )
+
+    def create_team(self, name, creator_id):
+        team = Team(
+            name=name,
+            creator_id=creator_id,
+        )
+        super().store_object(team)
+        return team
+
+    def add_user(self, team_id, user_id):
+        userteam = UserTeam(team_id=team_id, user_id=user_id)
+        super().store_object(userteam)
+        return userteam

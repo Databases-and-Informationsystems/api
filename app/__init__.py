@@ -18,12 +18,14 @@ def create_app(config_class):
     from app.routes.relation_routes import ns as relations
     from app.routes.entity_routes import ns as entities
     from app.routes.document_routes import ns as documents
+    from app.routes.team_routes import ns as teams
 
     api.add_namespace(projects, path="/projects")
     api.add_namespace(mentions, path="/mentions")
     api.add_namespace(relations, path="/relations")
     api.add_namespace(entities, path="/entities")
     api.add_namespace(documents, path="/documents")
+    api.add_namespace(teams, path="/teams")
 
     if not config_class.TESTING:
         from app.db import db

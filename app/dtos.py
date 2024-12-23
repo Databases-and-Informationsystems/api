@@ -100,3 +100,19 @@ relation_output_list_dto = api.model(
         "relations": fields.List(fields.Nested(relation_output_dto)),
     },
 )
+
+team_input_dto = api.model(
+    "TeamInput",
+    {
+        "name": fields.String(required=True),
+    },
+)
+
+team_output_dto = api.model(
+    "TeamOutput",
+    {
+        "id": fields.Integer,
+        "name": fields.String,
+        "creator_id": fields.Integer,
+    },
+)

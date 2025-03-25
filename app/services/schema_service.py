@@ -4,7 +4,8 @@ import typing
 
 from werkzeug.exceptions import BadRequest, Conflict
 
-from app.models import Schema, SchemaMention, SchemaRelation, SchemaConstraint
+from app.models.buisness_models import BSchema
+from app.models.db_models import Schema, SchemaMention, SchemaRelation, SchemaConstraint
 from app.repositories.schema_repository import SchemaRepository
 
 
@@ -14,19 +15,11 @@ class SchemaService:
     def __init__(self, schema_repository):
         self.__schema_repository = schema_repository
 
-    def get_schema_by_id(self, schema_id):
-        """
-        Fetches schema with all components by its id
-        :param schema_id: Schema ID to fetch
-        :return: schema_output_dto
-        :raises BadRequest: If schema not found
-        """
+    def get_schema_by_id(self, schema_id) -> typing.Optional[BSchema]:
         schema = self.__schema_repository.get_schema_by_id(schema_id)
-        if schema is None:
-            raise BadRequest("Schema not found")
-        return self._build_schema(schema)
+        return self._append_lists_to_schema(schema) if schema else None
 
-    def get_schema_by_project_id(self, project_id):
+    def get_schema_by_project_id(self, project_id) -> BSchema:
         """
         Fetches schema of project with all components
         :param project_id: Project ID to query
@@ -34,87 +27,33 @@ class SchemaService:
         :raises BadRequest: If schema not found
         """
         schema = self.__schema_repository.get_by_project(project_id)
-        if schema is None:
-            raise BadRequest("Project not found")
-        return self._build_schema(schema)
+        return self._append_lists_to_schema(schema) if schema else None
 
-    def _build_schema(self, schema):
-        """
-        Maps schema database entry to schema output dto.
-        Queries components associated with schema.
-        :param schema: Schema database object
-        :return: schema_output_dto
-        """
-        constraints = self.__schema_repository.get_schema_constraints_by_schema(
+    def _append_lists_to_schema(self, schema: BSchema) -> BSchema:
+        schema.schema_mentions = self.__schema_repository.get_schema_mentions_by_schema(
             schema.id
         )
-        mentions = self.__schema_repository.get_schema_mentions_by_schema(schema.id)
-        relations = self.__schema_repository.get_schema_relations_by_schema(schema.id)
-        models = self.get_models_by_schema(schema.id)
-        return {
-            "id": schema.id,
-            "name": schema.name,
-            "is_fixed": schema.isFixed,
-            "modellingLanguage": schema.modelling_language,
-            "team_id": schema.team_id,
-            "team_name": schema.team_name,
-            "models": models,
-            "schema_mentions": [
-                {
-                    "id": mention.id,
-                    "tag": mention.tag,
-                    "description": mention.description,
-                    "color": mention.color,
-                    "entityPossible": mention.entityPossible,
-                }
-                for mention in mentions
-            ],
-            "schema_relations": [
-                {
-                    "id": relation.id,
-                    "tag": relation.tag,
-                    "description": relation.description,
-                }
-                for relation in relations
-            ],
-            "schema_constraints": [
-                {
-                    "id": constraint.id,
-                    "is_directed": constraint.isDirected,
-                    "schema_relation": {
-                        "id": constraint.relation_id,
-                        "tag": constraint.relation_tag,
-                        "description": constraint.relation_description,
-                    },
-                    "schema_mention_head": {
-                        "id": constraint.mention_head_id,
-                        "tag": constraint.mention_head_tag,
-                        "description": constraint.mention_head_description,
-                        "color": constraint.mention_head_color,
-                        "entityPossible": constraint.mention_head_entityPossible,
-                    },
-                    "schema_mention_tail": {
-                        "id": constraint.mention_tail_id,
-                        "tag": constraint.mention_tail_tag,
-                        "description": constraint.mention_tail_description,
-                        "color": constraint.mention_tail_color,
-                        "entityPossible": constraint.mention_tail_entityPossible,
-                    },
-                }
-                for constraint in constraints
-            ],
-        }
+        schema.schema_relations = (
+            self.__schema_repository.get_schema_relations_by_schema(schema.id)
+        )
+        schema.schema_constraints = (
+            self.__schema_repository.get_schema_constraints_by_schema(schema.id)
+        )
+        return schema
 
-    def get_schemas_by_user(self, user_id):
+    def get_schemas_by_user(self, user_id: int) -> typing.List[BSchema]:
         """
         Fetches all schemas a user has access to
         :param user_id: User ID to query
         :return: schema_output_list_dto
         """
-        schemas = self.__schema_repository.get_schema_ids_by_user(user_id)
-        if schemas is None:
-            return {"schemas": []}
-        return {"schemas": [self.get_schema_by_id(schema.id) for schema in schemas]}
+        return [
+            self._append_lists_to_schema(schema)
+            for schema in self.__schema_repository.get_schemas_by_user(user_id)
+        ]
+
+    def get_ids_by_user(self, user_id: int) -> typing.List[int]:
+        return self.__schema_repository.get_ids_by_user(user_id)
 
     def __create_schema(self, modelling_language_id, team_id, name) -> Schema:
         """

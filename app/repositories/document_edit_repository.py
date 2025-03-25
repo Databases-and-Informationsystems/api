@@ -1,4 +1,7 @@
-from app.models import (
+import typing
+
+from app.models.buisness_models import BDocumentEdit
+from app.models.db_models import (
     DocumentEdit,
     DocumentEditModelSettings,
     RecommendationModel,
@@ -42,6 +45,17 @@ class DocumentEditRepository(BaseRepository):
             .filter(DocumentEdit.active == True)
             .first()
         )
+
+    def get_ids_by_user(self, user_id: int) -> typing.List[int]:
+        return [
+            row[0]
+            for row in (
+                self.get_session()
+                .query(DocumentEdit.id)
+                .filter(DocumentEdit.user_id == user_id)
+                .all()
+            )
+        ]
 
     def get_document_edit_with_document_by_id(self, document_edit_id):
         return (
@@ -93,24 +107,21 @@ class DocumentEditRepository(BaseRepository):
             DocumentEdit.document_id.in_(document_ids), DocumentEdit.active == True
         ).update({DocumentEdit.active: False}, synchronize_session=False)
 
-    def get_document_edit_by_id(self, document_edit_id):
-        return (
+    def get_document_edit_by_id(
+        self, document_edit_id
+    ) -> typing.Optional[BDocumentEdit]:
+        de = (
             self.get_session()
             .query(
-                DocumentEdit.id,
-                DocumentEdit.document_id,
-                DocumentEdit.schema_id,
-                DocumentEdit.user_id,
-                DocumentEdit.state_id,
-                DocumentEditState.type.label("state_name"),
-                DocumentEdit.mention_model_id,
-                DocumentEdit.entity_model_id,
-                DocumentEdit.relation_model_id,
+                DocumentEdit,
             )
             .filter(DocumentEdit.id == document_edit_id)
             .filter(DocumentEdit.active == True)
             .join(DocumentEditState, DocumentEditState.id == DocumentEdit.state_id)
-        ).first()
+        ).one_or_none()
+        if de is None:
+            return None
+        return BDocumentEdit.from_db(de)
 
     def store_model_settings(self, document_edit_id, model_id, model_settings):
         if model_settings is None or model_id is None:

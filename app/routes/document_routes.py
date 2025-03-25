@@ -6,8 +6,6 @@ from app.services.document_service import document_service, DocumentService
 from app.dtos import (
     document_output_dto,
     document_create_dto,
-    document_list_dto,
-    document_delete_output_dto,
     heatmap_output_list_dto,
     jaccard_output_dto,
     document_state_update_dto,
@@ -26,16 +24,16 @@ class DocumentBaseRoute(AuthorizedBaseRoute):
 @ns.response(404, "Data not found")
 class DocumentRoutes(DocumentBaseRoute):
 
-    @ns.marshal_with(document_list_dto)
+    @ns.marshal_with(document_output_dto, as_list=True)
     def get(self):
         """
         Fetch all documents the user has access to.
         Documents also contain list of users which have annotated this document.
         """
-        user_id = self.user_service.get_logged_in_user_id()
+        user_id = self.user_service.get_user_id()
 
-        response = self.service.get_documents_by_user(user_id)
-        return response
+        documents = self.service.get_documents_by_user(user_id)
+        return [d.to_json() for d in documents]
 
     @ns.doc(description="Upload a document to a specific project.")
     @ns.expect(document_create_dto)
@@ -54,7 +52,7 @@ class DocumentRoutes(DocumentBaseRoute):
         file_name = data.get("file_name")
         file_content = data.get("file_content")
 
-        user_id = self.user_service.get_logged_in_user_id()
+        user_id = self.user_service.get_user_id()
         self.user_service.check_user_project_accessible(user_id, project_id)
 
         # Upload document via service
@@ -73,17 +71,17 @@ class DocumentRoutes(DocumentBaseRoute):
 @ns.response(404, "Data not found")
 class DocumentProjectRoutes(DocumentBaseRoute):
 
-    @ns.marshal_with(document_list_dto)
+    @ns.marshal_with(document_output_dto, as_list=True)
     def get(self, project_id):
         """
         Fetch all documents of a project the user has access to.
         Documents also contain list of users which have annotated this document.
         """
-        user_id = self.user_service.get_logged_in_user_id()
+        user_id = self.user_service.get_user_id()
         self.user_service.check_user_project_accessible(user_id, project_id)
 
-        response = self.service.get_documents_by_project(user_id, project_id)
-        return response
+        documents = self.service.get_documents_by_project(user_id, project_id)
+        return [d.to_json() for d in documents]
 
 
 @ns.route("/<int:document_id>")
@@ -92,14 +90,14 @@ class DocumentProjectRoutes(DocumentBaseRoute):
 @ns.response(200, "Document set to inactive successfully")
 class DocumentDeletionResource(DocumentBaseRoute):
 
-    @ns.marshal_with(document_delete_output_dto)
     @ns.doc(description="Soft-delete a Document by setting 'active' to False")
     def delete(self, document_id):
-        user_id = self.user_service.get_logged_in_user_id()
+        user_id = self.user_service.get_user_id()
         self.user_service.check_user_document_accessible(user_id, document_id)
 
-        response = self.service.soft_delete_document(document_id)
-        return response
+        self.service.soft_delete_document(document_id)
+
+        return "", 204
 
 
 @ns.route("/<int:document_id>/heatmap")
@@ -113,7 +111,7 @@ class DocumentEditsSenderResource(DocumentBaseRoute):
         description="Send all DocumentEdit data for a specific Document ID to an external service"
     )
     def get(self, document_id):
-        user_id = self.user_service.get_logged_in_user_id()
+        user_id = self.user_service.get_user_id()
         self.user_service.check_user_document_accessible(user_id, document_id)
 
         document_edits = self.service.get_all_document_edits_with_user_by_document(
@@ -151,6 +149,7 @@ class DocumentEditsSenderResource(DocumentBaseRoute):
         }
 
 
+# TODO should be in own service
 @ns.route("/<int:document_id>/jaccard-index")
 @ns.doc(params={"document_id": "A Document ID"})
 @ns.response(400, "Invalid input")
@@ -162,7 +161,7 @@ class JaccardIndexResource(DocumentBaseRoute):
         description="Send all DocumentEdit data for a specific Document ID to an external service"
     )
     def get(self, document_id):
-        user_id = self.user_service.get_logged_in_user_id()
+        user_id = self.user_service.get_user_id()
         self.user_service.check_user_document_accessible(user_id, document_id)
 
         document = self.service.get_document_by_id(document_id, user_id)
@@ -213,7 +212,7 @@ class DocumentStateResource(DocumentBaseRoute):
         """
         Update the state of a document.
         """
-        user_id = self.user_service.get_logged_in_user_id()
+        user_id = self.user_service.get_user_id()
         self.user_service.check_user_document_accessible(user_id, document_id)
 
         data = request.get_json()
@@ -223,4 +222,4 @@ class DocumentStateResource(DocumentBaseRoute):
             document_id, new_state_id, user_id
         )
 
-        return updated_document
+        return updated_document.to_json()

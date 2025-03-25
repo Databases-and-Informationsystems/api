@@ -1,19 +1,20 @@
+import typing
+
 from werkzeug.exceptions import BadRequest, NotFound, Conflict
 
-from app.models import Relation
+from app.models.buisness_models import BMention, BRelation
+from app.models.db_models import Relation
 from app.repositories.relation_repository import RelationRepository
 from app.services.relation_mention_service import (
     relation_mention_service,
     RelationMentionService,
 )
 from app.services.schema_service import schema_service, SchemaService
-from app.services.user_service import user_service, UserService
 from app.services.mention_services import mention_service, MentionService
 
 
 class RelationService:
     __relation_repository: RelationRepository
-    user_service: UserService
     schema_service: SchemaService
     mention_service: MentionService
     relation_mention_service: RelationMentionService
@@ -21,60 +22,25 @@ class RelationService:
     def __init__(
         self,
         relation_repository,
-        user_service,
         schema_service,
         mention_service: MentionService,
         relation_mention_service,
     ):
         self.__relation_repository = relation_repository
-        self.user_service = user_service
         self.schema_service = schema_service
         self.mention_service = mention_service
         self.relation_mention_service = relation_mention_service
 
-    def get_relations_by_document_edit(self, document_edit_id):
+    def get_relations_by_document_edit(
+        self, document_edit_id
+    ) -> typing.List[BRelation]:
         if not isinstance(document_edit_id, int) or document_edit_id <= 0:
             raise BadRequest("Invalid document edit ID. It must be a positive integer.")
 
-        mentions_data = self.mention_service.get_mentions_by_document_edit(
-            document_edit_id
+        relations: typing.List[BRelation] = (
+            self.__relation_repository.get_relations_by_document_edit(document_edit_id)
         )
-        mentions_dict = {
-            mention["id"]: mention for mention in mentions_data["mentions"]
-        }
-
-        relations = self.__relation_repository.get_relations_by_document_edit(
-            document_edit_id
-        )
-
-        transformed_relations = []
-        for relation in relations:
-            head_mention = mentions_dict.get(relation.mention_head_id)
-            tail_mention = mentions_dict.get(relation.mention_tail_id)
-
-            if not head_mention or not tail_mention:
-                continue
-
-            transformed_relations.append(
-                {
-                    "id": relation.id,
-                    "isDirected": relation.isDirected,
-                    "isShownRecommendation": relation.isShownRecommendation,
-                    "document_edit_id": relation.document_edit_id,
-                    "document_recommendation_id": relation.document_recommendation_id,
-                    "schema_relation": {
-                        "id": relation.schema_relation_id,
-                        "tag": relation.tag,
-                        "description": relation.description,
-                        "schema_id": relation.schema_id,
-                    },
-                    "tag": relation.tag,
-                    "head_mention": head_mention,
-                    "tail_mention": tail_mention,
-                }
-            )
-
-        return {"relations": transformed_relations}
+        return relations
 
     def save_relation_in_edit(
         self,
@@ -118,7 +84,7 @@ class RelationService:
         document_edit_id,
         mention_head_id,
         mention_tail_id,
-    ):
+    ) -> typing.Optional[Relation]:
         self.mention_service.verify_mention_in_document_edit_not_recommendation(
             mention_head_id, document_edit_id
         )
@@ -148,7 +114,7 @@ class RelationService:
             mention_head_id,
             mention_tail_id,
         )
-        return self.get_relation_dto_by_id(relation.id)
+        return self.__relation_repository.get_relation_by_id(relation.id)
 
     def update_relation(
         self,
@@ -156,7 +122,7 @@ class RelationService:
         schema_relation_id=None,
         mention_head_id=None,
         mention_tail_id=None,
-    ):
+    ) -> typing.Optional[Relation]:
         """
         Updates a relation with specified parameters.
 
@@ -245,40 +211,7 @@ class RelationService:
             mention_tail_id,
             constraint["is_directed"],
         )
-        return self.get_relation_dto_by_id(relation.id)
-
-    def get_relation_dto_by_id(self, relation_id):
-        """
-        Fetches relation and maps it to output dto.
-        Also fetches associated mentions.
-
-        :param relation_id: Relation ID to fetch
-        :return: relation_output_model
-        """
-        relation = self.__relation_repository.get_relation_with_schema_by_id(
-            relation_id
-        )
-        response = {
-            "id": relation.relation_id,
-            "tag": relation.tag,
-            "isShownRecommendation": relation.isShownRecommendation,
-            "isDirected": relation.isDirected,
-            "document_edit_id": relation.document_edit_id,
-            "document_recommendation_id": relation.document_recommendation_id,
-            "head_mention": self.mention_service.get_mention_dto_by_id(
-                relation.mention_head_id
-            ),
-            "tail_mention": self.mention_service.get_mention_dto_by_id(
-                relation.mention_tail_id
-            ),
-            "schema_relation": {
-                "id": relation.schema_relation_id,
-                "tag": relation.tag,
-                "description": relation.description,
-                "schema_id": relation.schema_id,
-            },
-        }
-        return response
+        return self.__relation_repository.get_relation_by_id(relation.id)
 
     def accept_relation(self, relation_id):
         """
@@ -295,7 +228,7 @@ class RelationService:
         new_relation = self.__relation_repository.create_relation(
             schema_relation_id=relation.schema_relation_id,
             document_edit_id=relation.document_edit_id,
-            isDirected=relation.isDirected,
+            is_directed=relation.isDirected,
             mention_head_id=relation.mention_head_id,
             mention_tail_id=relation.mention_tail_id,
             document_recommendation_id=None,
@@ -304,7 +237,7 @@ class RelationService:
 
         # Update relation recommendation
         self.__relation_repository.update_is_shown_recommendation(relation_id, False)
-        return self.get_relation_dto_by_id(new_relation.id)
+        return self.__relation_repository.get_relation_by_id(new_relation.id)
 
     def reject_relation(self, relation_id):
         """
@@ -340,7 +273,9 @@ class RelationService:
             if len(duplicate_relations) > 0:
                 raise Conflict("Relation already exists.")
 
-    def get_recommendations_by_document_edit(self, document_edit_id):
+    def get_recommendations_by_document_edit(
+        self, document_edit_id
+    ) -> typing.List[BRelation]:
         """
         Fetches all unreviewed relation recommendations for a document edit
 
@@ -390,7 +325,7 @@ class RelationService:
     def get_predicted_relations_by_document_edit_id(
         self, document_edit_id, mentions_dict
     ):
-        predicted_relation = self.__relation_repository.get_predicted_recommended_relations_by_document_edit(
+        predicted_relation = self.__relation_repository.get_predicted_recommended_relations_by_document_recommendation(
             document_edit_id
         )
         return self.__map_relation_to_f1_score_dto(predicted_relation, mentions_dict)
@@ -433,7 +368,6 @@ class RelationService:
 
 relation_service = RelationService(
     RelationRepository(),
-    user_service,
     schema_service,
     mention_service,
     relation_mention_service,

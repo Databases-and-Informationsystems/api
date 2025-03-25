@@ -1,9 +1,12 @@
 import json
+import typing
+
 import requests
 from werkzeug.exceptions import BadRequest, Forbidden
 from flask import current_app
 
-from app.models import Token
+from app.models.buisness_models import BToken
+from app.models.db_models import Token
 from app.repositories.token_repository import TokenRepository
 
 
@@ -13,13 +16,13 @@ class TokenService:
     def __init__(self, token_repository):
         self.__token_repository = token_repository
 
-    def tokenize_document(self, doc_id, content):
+    def tokenize_document(self, doc_id, content) -> typing.List[BToken]:
         """
         Calls tokenization process and stores tokens for document
 
         :param doc_id: Document ID to tokenize
         :param content: Content of the document
-        :return: Token dict
+        :return: Token list
         :raises BadRequest: If tokenization failed
         """
         url = current_app.config.get("PIPELINE_URL") + "/steps/tokenize"
@@ -41,11 +44,11 @@ class TokenService:
                 )
         except:
             raise BadRequest("Tokenization failed")
-        return {"tokens": tokens}
+        return self.get_tokens_by_document(doc_id)
 
     def save_token(
         self, text, document_index, pos_tag, sentence_index, doc_id
-    ) -> Token:
+    ) -> BToken:
         """
         Saves token for document, without validation
 
@@ -64,51 +67,17 @@ class TokenService:
             doc_id,
         )
 
-    def get_tokens_by_document(self, document_id):
-        """
-        Fetches all tokens for a document
+    def get_tokens_by_document(self, document_id) -> typing.List[BToken]:
+        return self.__token_repository.get_tokens_by_document(document_id)
 
-        :param document_id: Document ID to query tokens
-        :return: token_output_list_dto
-        """
-        tokens = self.__token_repository.get_tokens_by_document(document_id)
-        if tokens is None:
-            return {"tokens": []}
-        return {
-            "tokens": [
-                {
-                    "id": token.id,
-                    "text": token.text,
-                    "document_index": token.document_index,
-                    "sentence_index": token.sentence_index,
-                    "pos_tag": token.pos_tag,
-                }
-                for token in tokens
-            ]
-        }
-
-    def get_tokens_by_mention(self, mention_id):
+    def get_tokens_by_mention(self, mention_id) -> typing.List[BToken]:
         """
         Fetches all tokens for a mention
 
         :param mention_id: Mention ID to query tokens
         :return: token_output_list_dto
         """
-        tokens = self.__token_repository.get_tokens_by_mention(mention_id)
-        if tokens is None:
-            return {"tokens": []}
-        return {
-            "tokens": [
-                {
-                    "id": token.id,
-                    "text": token.text,
-                    "document_index": token.document_index,
-                    "sentence_index": token.sentence_index,
-                    "pos_tag": token.pos_tag,
-                }
-                for token in tokens
-            ]
-        }
+        return self.__token_repository.get_tokens_by_mention(mention_id)
 
     def check_tokens_in_document_edit(self, token_ids, document_edit_id):
         """

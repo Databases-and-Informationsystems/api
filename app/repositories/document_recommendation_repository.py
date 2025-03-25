@@ -1,4 +1,4 @@
-from app.models import DocumentRecommendation
+from app.models.db_models import DocumentRecommendation
 from app.repositories.base_repository import BaseRepository
 
 

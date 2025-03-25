@@ -1,4 +1,4 @@
-from app.models import TokenMention
+from app.models.db_models import TokenMention
 from app.repositories.base_repository import BaseRepository
 
 

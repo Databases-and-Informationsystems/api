@@ -1,4 +1,7 @@
-from app.models import Relation, SchemaRelation
+import typing
+
+from app.models.buisness_models import BRelation
+from app.models.db_models import Relation, SchemaRelation
 from app.repositories.base_repository import BaseRepository
 
 
@@ -8,7 +11,7 @@ class RelationRepository(BaseRepository):
         self,
         schema_relation_id,
         document_edit_id,
-        isDirected,
+        is_directed,
         mention_head_id,
         mention_tail_id,
         document_recommendation_id=None,
@@ -18,7 +21,7 @@ class RelationRepository(BaseRepository):
         relation = Relation(
             schema_relation_id=schema_relation_id,
             document_edit_id=document_edit_id,
-            isDirected=isDirected,
+            isDirected=is_directed,
             mention_head_id=mention_head_id,
             mention_tail_id=mention_tail_id,
             document_recommendation_id=document_recommendation_id,
@@ -27,74 +30,64 @@ class RelationRepository(BaseRepository):
         self.store_object(relation)
         return relation
 
-    def get_relations_by_document_edit(self, document_edit_id):
-        return (
-            self.get_session()
-            .query(
-                Relation.id,
-                Relation.isDirected,
-                Relation.isShownRecommendation,
-                Relation.mention_head_id,
-                Relation.mention_tail_id,
-                Relation.document_recommendation_id,
-                Relation.document_edit_id,
-                SchemaRelation.id.label("schema_relation_id"),
-                SchemaRelation.tag,
-                SchemaRelation.description,
-                SchemaRelation.schema_id,
-            )
-            .join(SchemaRelation, SchemaRelation.id == Relation.schema_relation_id)
-            .filter(
-                (Relation.document_edit_id == document_edit_id)
-                & (
-                    Relation.document_recommendation_id.is_(None)
-                    | Relation.isShownRecommendation.is_(True)
+    def get_relations_by_document_edit(
+        self, document_edit_id
+    ) -> typing.List[BRelation]:
+        return [
+            BRelation.from_db(r)
+            for r in (
+                self.get_session()
+                .query(
+                    Relation,
                 )
+                .filter(
+                    (Relation.document_edit_id == document_edit_id)
+                    & (
+                        Relation.document_recommendation_id.is_(None)
+                        | Relation.isShownRecommendation.is_(True)
+                    )
+                )
+                .all()
             )
-            .all()
-        )
+        ]
 
-    def get_actual_relations_by_document_edit(self, document_edit_id):
-        return (
-            self.get_session()
-            .query(
-                Relation.id,
-                Relation.isDirected,
-                Relation.isShownRecommendation,
-                Relation.mention_head_id,
-                Relation.mention_tail_id,
-                Relation.document_recommendation_id,
-                Relation.document_edit_id,
-                SchemaRelation.tag,
-            )
-            .join(SchemaRelation, SchemaRelation.id == Relation.schema_relation_id)
-            .filter(
-                (Relation.document_edit_id == document_edit_id)
-                & (Relation.document_recommendation_id.is_(None))
-            )
-            .all()
-        )
+    def get_actual_relations_by_document_edit(
+        self, document_edit_id
+    ) -> typing.List[BRelation]:
+        """
 
-    def get_predicted_recommended_relations_by_document_edit(self, document_edit_id):
-        return (
-            self.get_session()
-            .query(
-                Relation.id,
-                Relation.isDirected,
-                Relation.isShownRecommendation,
-                Relation.mention_head_id,
-                Relation.mention_tail_id,
-                Relation.document_recommendation_id,
-                Relation.document_edit_id,
-                SchemaRelation.tag,
+        :param document_edit_id:
+        :return: relations including relations where `isShownRecommendation` is false
+        """
+        return [
+            BRelation.from_db(r)
+            for r in (
+                self.get_session()
+                .query(
+                    Relation,
+                )
+                .filter(
+                    (Relation.document_edit_id == document_edit_id)
+                    & (Relation.document_recommendation_id.is_(None))
+                )
+                .all()
             )
-            .join(SchemaRelation, SchemaRelation.id == Relation.schema_relation_id)
-            .filter(
-                (Relation.document_edit_id == document_edit_id)
-                & (Relation.document_recommendation_id.is_not(None))
+        ]
+
+    def get_predicted_recommended_relations_by_document_recommendation(
+        self, document_recommendation_id
+    ):
+        return [
+            BRelation.from_db(r)
+            for r in (
+                self.get_session()
+                .query(Relation)
+                .filter(
+                    (Relation.document_recommendation_id == document_recommendation_id)
+                )
+                .all()
             )
-            .all()
-        )
+        ]
 
     def save_relation_in_edit(
         self,
@@ -126,28 +119,12 @@ class RelationRepository(BaseRepository):
         return True
 
     def get_relation_by_id(self, relation_id):
-        return self.get_session().query(Relation).filter_by(id=relation_id).first()
-
-    def get_relation_with_schema_by_id(self, relation_id):
-        return (
-            self.get_session()
-            .query(
-                Relation.id.label("relation_id"),
-                Relation.isShownRecommendation,
-                Relation.document_edit_id,
-                Relation.document_recommendation_id,
-                Relation.mention_head_id,
-                Relation.mention_tail_id,
-                Relation.isDirected,
-                SchemaRelation.id.label("schema_relation_id"),
-                SchemaRelation.tag,
-                SchemaRelation.description,
-                SchemaRelation.schema_id,
-            )
-            .join(SchemaRelation, Relation.schema_relation_id == SchemaRelation.id)
-            .filter(Relation.id == relation_id)
-            .first()
+        relation = (
+            self.get_session().query(Relation).filter_by(id=relation_id).one_or_none()
         )
+        if relation is None:
+            return None
+        return BRelation.from_db(relation)
 
     def get_relations_by_mention(self, mention_id):
         return (
@@ -164,20 +141,25 @@ class RelationRepository(BaseRepository):
             .all()
         )
 
-    def get_relations_by_mention_head_and_tail(self, mention_head_id, mention_tail_id):
-        return (
-            self.get_session()
-            .query(Relation)
-            .filter(
-                (Relation.mention_head_id == mention_head_id)
-                & (Relation.mention_tail_id == mention_tail_id)
+    def get_relations_by_mention_head_and_tail(
+        self, mention_head_id, mention_tail_id
+    ) -> typing.List[BRelation]:
+        return [
+            BRelation.from_db(r)
+            for r in (
+                self.get_session()
+                .query(Relation)
+                .filter(
+                    (Relation.mention_head_id == mention_head_id)
+                    & (Relation.mention_tail_id == mention_tail_id)
+                )
+                .filter(
+                    Relation.document_recommendation_id.is_(None)
+                    | Relation.isShownRecommendation.is_(True)
+                )
+                .all()
             )
-            .filter(
-                Relation.document_recommendation_id.is_(None)
-                | Relation.isShownRecommendation.is_(True)
-            )
-            .all()
-        )
+        ]
 
     def delete_relations_by_mention(self, mention_id):
         relations = self.get_relations_by_mention(mention_id)
@@ -214,14 +196,19 @@ class RelationRepository(BaseRepository):
             relation.isShownRecommendation = value
         return relation
 
-    def get_recommendations_by_document_edit(self, document_edit_id):
-        return (
-            self.get_session()
-            .query(Relation)
-            .filter(Relation.document_edit_id == document_edit_id)
-            .filter(Relation.isShownRecommendation == True)
-            .all()
-        )
+    def get_recommendations_by_document_edit(
+        self, document_edit_id
+    ) -> typing.List[BRelation]:
+        return [
+            BRelation.from_db(r)
+            for r in (
+                self.get_session()
+                .query(Relation)
+                .filter(Relation.document_edit_id == document_edit_id)
+                .filter(Relation.isShownRecommendation == True)
+                .all()
+            )
+        ]
 
     def get_relations_by_edit_ids(self, document_edit_ids):
         return (

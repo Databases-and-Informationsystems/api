@@ -1,6 +1,16 @@
 from flask_restx import fields
 from app.extension import api
 
+schema_id = api.model("SchemaId", {"id": fields.Integer(description="Schema ID")})
+document_id = api.model("DocumentId", {"id": fields.Integer(description="Document ID")})
+document_edit_id = api.model(
+    "DocumentEditId", {"id": fields.Integer(description="DocumentEdit ID")}
+)
+document_recommendation_id = api.model(
+    "DocumentRecommendationId",
+    {"id": fields.Integer(description="Document Recommendation ID")},
+)
+entity_id = api.model("EntityId", {"id": fields.Integer(description="Entity ID")})
 user_output_dto = api.model(
     "UserOutput",
     {
@@ -34,8 +44,12 @@ project_input_dto = api.model(
     "ProjectInput",
     {
         "name": fields.String(required=True),
-        "team_id": fields.Integer(required=True, min=1),
-        "schema_id": fields.Integer(required=True, min=1),
+        "team": fields.Nested(
+            api.model("TeamId", {"id": fields.Integer(required=True, min=1)})
+        ),
+        "schema": fields.Nested(
+            api.model("SchemaId", {"id": fields.Integer(required=True, min=1)})
+        ),
     },
 )
 
@@ -60,14 +74,41 @@ project_dto = api.model(
     {
         "id": fields.Integer,
         "name": fields.String,
+        "schema": fields.Nested(
+            api.model(
+                "Schema",
+                {
+                    "id": fields.Integer,
+                    "name": fields.String,
+                },
+            )
+        ),
     },
 )
+
+document_state_dto = api.model(
+    "DocumentState",
+    {
+        "id": fields.Integer,
+        "type": fields.String,
+    },
+)
+
 
 document_edit_state_dto = api.model(
     "DocumentEditState",
     {
         "id": fields.Integer,
-        "state": fields.String,
+        "type": fields.String,
+    },
+)
+
+document_edit_output_2_dto = api.model(
+    "DocumentEditOutput2",
+    {
+        "id": fields.Integer(required=True),
+        "state": fields.Nested(document_edit_state_dto),
+        "user": fields.Nested(user_output_dto),
     },
 )
 
@@ -77,49 +118,14 @@ document_output_dto = api.model(
         "id": fields.Integer,
         "content": fields.String,
         "name": fields.String,
-        "state": fields.Nested(
-            api.model(
-                "DocumentState",
-                {
-                    "id": fields.Integer,
-                    "type": fields.String,
-                },
-            )
-        ),
+        "state": fields.Nested(document_state_dto),
         "project": fields.Nested(project_dto),
-        "schema": fields.Nested(schema_dto),
         "team": fields.Nested(team_dto),
-        "document_edit": fields.Nested(document_edit_state_dto),
         "creator": fields.Nested(user_output_dto),
-        "document_edits": fields.List(
-            fields.Nested(
-                api.model(
-                    "DocumentEdits",
-                    {
-                        "id": fields.Integer,
-                        "user": fields.Nested(user_output_dto),
-                        "state": fields.Nested(
-                            api.model(
-                                "DocumentEditState",
-                                {
-                                    "id": fields.Integer,
-                                    "type": fields.String,
-                                },
-                            )
-                        ),
-                    },
-                )
-            )
-        ),
+        "documentEdits": fields.List(fields.Nested(document_edit_output_2_dto)),
     },
 )
 
-document_list_dto = api.model(
-    "DocumentOutput",
-    {
-        "documents": fields.List(fields.Nested(document_output_dto)),
-    },
-)
 
 entity_input_dto = api.model(
     "EntityInput",
@@ -173,14 +179,24 @@ document_create_output_dto = api.model(
     },
 )
 
+team_output_dto = api.model(
+    "TeamUserOutput",
+    {
+        "id": fields.Integer,
+        "name": fields.String,
+        "creator": fields.Nested(user_output_dto),
+        "members": fields.List(fields.Nested(user_output_dto)),
+    },
+)
+
 schema_constraint_output_dto = api.model(
     "SchemaConstraintOutput",
     {
         "id": fields.Integer,
-        "is_directed": fields.Boolean,
-        "schema_relation": fields.Nested(schema_relation_output_dto),
-        "schema_mention_head": fields.Nested(schema_mention_output_dto),
-        "schema_mention_tail": fields.Nested(schema_mention_output_dto),
+        "isDirected": fields.Boolean,
+        "schemaRelation": fields.Nested(schema_relation_output_dto),
+        "schemaHeadMention": fields.Nested(schema_mention_output_dto),
+        "schemaTailMention": fields.Nested(schema_mention_output_dto),
     },
 )
 
@@ -202,19 +218,45 @@ schema_model_dto = api.model(
     },
 )
 
+small_schema_output_dto = api.model(
+    "SmallSchemaOutput",
+    {
+        "id": fields.Integer,
+        "name": fields.String,
+        "isFixed": fields.Boolean,
+        "modellingLanguage": fields.Nested(
+            api.model(
+                "ModellingLanguage",
+                {
+                    "id": fields.Integer,
+                    "type": fields.String,
+                },
+            ),
+        ),
+        "team": fields.Nested(team_output_dto),
+    },
+)
+
 schema_output_dto = api.model(
     "SchemaOutput",
     {
         "id": fields.Integer,
         "name": fields.String,
-        "is_fixed": fields.Boolean,
-        "modellingLanguage": fields.String,
-        "team_id": fields.Integer,
-        "team_name": fields.String,
-        "models": fields.List(fields.Nested(schema_model_dto)),
-        "schema_mentions": fields.List(fields.Nested(schema_mention_output_dto)),
-        "schema_relations": fields.List(fields.Nested(schema_relation_output_dto)),
-        "schema_constraints": fields.List(fields.Nested(schema_constraint_output_dto)),
+        "isFixed": fields.Boolean,
+        "modellingLanguage": fields.Nested(
+            api.model(
+                "ModellingLanguage",
+                {
+                    "id": fields.Integer,
+                    "type": fields.String,
+                },
+            ),
+        ),
+        "team": fields.Nested(team_output_dto),
+        "models": fields.List(fields.Nested(schema_model_dto), required=False),
+        "schemaMentions": fields.List(fields.Nested(schema_mention_output_dto)),
+        "schemaRelations": fields.List(fields.Nested(schema_relation_output_dto)),
+        "schemaConstraints": fields.List(fields.Nested(schema_constraint_output_dto)),
     },
 )
 
@@ -263,13 +305,6 @@ schema_input_dto = api.model(
     },
 )
 
-schema_output_list_dto = api.model(
-    "SchemaOutputList",
-    {
-        "schemas": fields.List(fields.Nested(schema_output_dto)),
-    },
-)
-
 team_member_input_dto = api.model(
     "TeamMemberInput",
     {
@@ -284,15 +319,6 @@ team_input_dto = api.model(
     },
 )
 
-team_user_output_dto = api.model(
-    "TeamUserOutput",
-    {
-        "id": fields.Integer,
-        "name": fields.String,
-        "creator": fields.Nested(user_output_dto),
-        "members": fields.List(fields.Nested(user_output_dto)),
-    },
-)
 
 recommendation_model_settings_dto = api.model(
     "RecommendationModelParameter",
@@ -331,9 +357,10 @@ document_overtake_dto = api.model(
 team_user_output_list_dto = api.model(
     "TeamUserListOutput",
     {
-        "teams": fields.List(fields.Nested(team_user_output_dto)),
+        "teams": fields.List(fields.Nested(team_output_dto)),
     },
 )
+
 
 document_edit_output_dto = api.model(
     "DocumentEditOutput",
@@ -354,8 +381,8 @@ project_output_dto = api.model(
         "id": fields.Integer,
         "name": fields.String,
         "creator": fields.Nested(user_output_dto),
-        "team": fields.Nested(team_dto),
-        "schema": fields.Nested(schema_dto),
+        "team": fields.Nested(team_output_dto),
+        "schema": fields.Nested(small_schema_output_dto),
     },
 )
 
@@ -388,13 +415,6 @@ user_update_input_dto = api.model(
     },
 )
 
-signup_output_dto = api.model(
-    "SignupOutput",
-    {
-        "message": fields.String,
-    },
-)
-
 login_input_dto = api.model(
     "LoginInput",
     {
@@ -408,9 +428,10 @@ login_input_dto = api.model(
 login_output_dto = api.model(
     "LoginOutput",
     {
-        "token": fields.String(
+        "jwt": fields.String(
             required=True, description="The JWT token for authenticated user"
         ),
+        "user": fields.Nested(user_output_dto),
     },
 )
 
@@ -430,26 +451,6 @@ document_edit_output_soft_delete_dto = api.model(
     },
 )
 
-document_delete_output_dto = api.model(
-    "DeleteDocumentOutput",
-    {
-        "message": fields.String,
-    },
-)
-
-project_delete_output_model = api.model(
-    "DeleteProjectOutput",
-    {
-        "message": fields.String,
-    },
-)
-
-team_delete_output_model = api.model(
-    "DeleteTeamOutput",
-    {
-        "message": fields.String,
-    },
-)
 
 relation_update_input_dto = api.model(
     "UpdateRelationInput",
@@ -465,13 +466,13 @@ token_model = api.model(
     {
         "id": fields.Integer(description="Token ID"),
         "text": fields.String(description="Token text"),
-        "document_index": fields.Integer(
+        "documentIndex": fields.Integer(
             description="Index of the token in the document"
         ),
-        "sentence_index": fields.Integer(
+        "sentenceIndex": fields.Integer(
             description="Index of the token in the sentence"
         ),
-        "pos_tag": fields.String(description="Part-of-speech tag"),
+        "posTag": fields.String(description="Part-of-speech tag"),
     },
 )
 
@@ -486,6 +487,9 @@ document_model = api.model(
     "Document",
     {
         "id": fields.Integer(description="Document ID"),
+        "content": fields.String(description="Document content"),
+        "creator": fields.Nested(user_output_dto),
+        "name": fields.String(description="Document name"),
         "tokens": fields.List(
             fields.Nested(token_model), description="List of tokens in the document"
         ),
@@ -500,28 +504,15 @@ mention_output_dto = api.model(
         "isShownRecommendation": fields.Boolean(
             description="Whether the mention is shown as a recommendation"
         ),
-        "document_edit_id": fields.Integer(description="Document Edit ID"),
-        "document_recommendation_id": fields.Integer(
-            description="Document Recommendation ID", nullable=True
-        ),
-        "entity_id": fields.Integer(
-            description="Entity ID associated with the mention"
-        ),
+        "documentEdit": fields.Nested(document_edit_id),
+        "documentRecommendation": fields.Nested(document_recommendation_id),
+        "entity": fields.Nested(entity_id),
         "tokens": fields.List(
             fields.Nested(token_model),
             description="List of tokens associated with the mention",
         ),
-        "schema_mention": fields.Nested(
+        "schemaMention": fields.Nested(
             schema_mention_output_dto, description="Details of the schema mention"
-        ),
-    },
-)
-
-mention_output_list_dto = api.model(
-    "MentionOutputList",
-    {
-        "mentions": fields.List(
-            fields.Nested(mention_output_dto), description="List of mentions"
         ),
     },
 )
@@ -531,16 +522,9 @@ entity_output_dto = api.model(
     {
         "id": fields.Integer,
         "isShownRecommendation": fields.Boolean,
-        "document_edit_id": fields.Integer,
-        "document_recommendation_id": fields.Integer,
+        "documentEdit": fields.Nested(document_edit_id),
+        "documentRecommendation": fields.Nested(document_recommendation_id),
         "mentions": fields.List(fields.Nested(mention_output_dto)),
-    },
-)
-
-entity_output_list_dto = api.model(
-    "EntityOutputList",
-    {
-        "entities": fields.List(fields.Nested(entity_output_dto)),
     },
 )
 
@@ -550,7 +534,7 @@ schema_relation_model = api.model(
         "id": fields.Integer(description="Schema Relation ID"),
         "tag": fields.String(description="Schema Relation Tag"),
         "description": fields.String(description="Description of the schema relation"),
-        "schema_id": fields.Integer(description="Schema ID"),
+        "schema": fields.Nested(schema_id),
     },
 )
 
@@ -562,28 +546,17 @@ relation_output_model = api.model(
         "isShownRecommendation": fields.Boolean(
             description="Whether the relation is shown as a recommendation"
         ),
-        "document_edit_id": fields.Integer(description="Document Edit ID"),
-        "document_recommendation_id": fields.Integer(
-            description="Document Recommendation ID", nullable=True
-        ),
-        "schema_relation": fields.Nested(
+        "documentEdit": fields.Nested(document_edit_id),
+        "documentRecommendation": fields.Nested(document_recommendation_id),
+        "schemaRelation": fields.Nested(
             schema_relation_model, description="Schema relation details"
         ),
         "tag": fields.String(description="Relation tag"),
-        "head_mention": fields.Nested(
+        "headMention": fields.Nested(
             mention_output_dto, description="Head mention of the relation"
         ),
-        "tail_mention": fields.Nested(
+        "tailMention": fields.Nested(
             mention_output_dto, description="Tail mention of the relation"
-        ),
-    },
-)
-
-relation_output_list_dto = api.model(
-    "RelationsOutput",
-    {
-        "relations": fields.List(
-            fields.Nested(relation_output_model), description="List of relations"
         ),
     },
 )
@@ -600,7 +573,7 @@ finished_document_edit_output_dto = api.model(
             fields.Nested(relation_output_model),
             description="List of relations in the document edit",
         ),
-        "schema_id": fields.Integer(description="Schema ID"),
+        "schema": fields.Nested(schema_dto),
         "state": fields.Nested(document_edit_state_dto),
     },
 )
@@ -610,13 +583,13 @@ heatmap_output_dto = api.model(
     {
         "id": fields.Integer(description="Token ID"),
         "text": fields.String(description="Token text"),
-        "document_index": fields.Integer(
+        "documentIndex": fields.Integer(
             description="Index of the token in the document"
         ),
-        "sentence_index": fields.Integer(
+        "sentenceIndex": fields.Integer(
             description="Index of the token in the sentence"
         ),
-        "pos_tag": fields.String(description="Part-of-speech tag"),
+        "posTag": fields.String(description="Part-of-speech tag"),
         "score": fields.Float(description="Score associated with the token"),
     },
 )

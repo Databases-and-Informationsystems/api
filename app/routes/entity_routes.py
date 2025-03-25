@@ -1,8 +1,10 @@
+import typing
 from flask_restx import Namespace
+
+from app.models.buisness_models import BEntity
 from app.routes.base_routes import AuthorizedBaseRoute
 from app.services.entity_service import entity_service, EntityService
 from app.dtos import (
-    entity_output_list_dto,
     entity_input_dto,
     entity_output_dto,
 )
@@ -21,16 +23,18 @@ class EntityBaseRoute(AuthorizedBaseRoute):
 @ns.response(404, "Data not found")
 class EntityQueryResource(EntityBaseRoute):
 
-    @ns.marshal_with(entity_output_list_dto)
+    @ns.marshal_with(entity_output_dto, as_list=True)
     def get(self, document_edit_id):
         """
         Fetch all entities of a document annotation by its ID.
         """
-        user_id = self.user_service.get_logged_in_user_id()
+        user_id = self.user_service.get_user_id()
         self.user_service.check_user_document_edit_accessible(user_id, document_edit_id)
 
-        response = self.service.get_entities_by_document_edit(document_edit_id)
-        return response
+        entities: typing.List[BEntity] = self.service.get_entities_by_document_edit(
+            document_edit_id
+        )
+        return [e.to_json() for e in entities]
 
 
 @ns.route("/<int:entity_id>")
@@ -41,7 +45,7 @@ class EntityDeletionResource(EntityBaseRoute):
 
     @ns.doc(description="Delete an entity")
     def delete(self, entity_id):
-        user_id = self.user_service.get_logged_in_user_id()
+        user_id = self.user_service.get_user_id()
         self.user_service.check_user_entity_accessible(user_id, entity_id)
 
         response = self.service.delete_entity(entity_id)
@@ -61,7 +65,7 @@ class EntityCreationResource(EntityBaseRoute):
         document_edit_id = data.get("document_edit_id")
         mention_ids = data.get("mention_ids")
 
-        user_id = self.user_service.get_logged_in_user_id()
+        user_id = self.user_service.get_user_id()
         self.user_service.check_user_document_edit_accessible(user_id, document_edit_id)
 
         response = self.service.create_entity(document_edit_id, mention_ids)

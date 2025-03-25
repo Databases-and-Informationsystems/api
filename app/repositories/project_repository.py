@@ -1,4 +1,7 @@
-from app.models import Project, Document, DocumentEdit, Team, UserTeam, Schema
+import typing
+
+from app.models.buisness_models import BProject
+from app.models.db_models import Project, Document, DocumentEdit, Team, UserTeam, Schema
 from app.repositories.base_repository import BaseRepository
 
 
@@ -35,46 +38,37 @@ class ProjectRepository(BaseRepository):
             .all()
         )
 
-    def get_project_by_id(self, project_id):
-        return (
+    def get_project_by_id(self, project_id) -> typing.Optional[BProject]:
+        project = (
             self.get_session()
             .query(
-                Project.id,
-                Project.name,
-                Project.creator_id,
-                Project.team_id,
-                Project.schema_id,
-                Schema.name.label("schema_name"),
-                Team.name.label("team_name"),
+                Project,
             )
             .select_from(UserTeam)
             .join(Team, Team.id == UserTeam.team_id)
             .join(Project, Project.team_id == Team.id)
-            .join(Schema, Schema.id == Project.schema_id)
             .filter(Project.id == project_id)
+            .filter(Project.active == True)
             .first()
         )
+        return BProject.from_db(project) if project else None
 
-    def get_projects_by_user(self, user_id):
-        return (
-            self.get_session()
-            .query(
-                Project.id,
-                Project.name,
-                Project.creator_id,
-                Project.team_id,
-                Project.schema_id,
-                Schema.name.label("schema_name"),
-                Team.name.label("team_name"),
+    def get_projects_by_user(self, user_id) -> typing.List[BProject]:
+        return [
+            BProject.from_db(project)
+            for project in (
+                self.get_session()
+                .query(
+                    Project,
+                )
+                .select_from(UserTeam)
+                .join(Team, Team.id == UserTeam.team_id)
+                .join(Project, Project.team_id == Team.id)
+                .filter(UserTeam.user_id == user_id)
+                .filter(Project.active == True)
+                .all()
             )
-            .select_from(UserTeam)
-            .join(Team, Team.id == UserTeam.team_id)
-            .join(Project, Project.team_id == Team.id)
-            .join(Schema, Schema.id == Project.schema_id)
-            .filter(UserTeam.user_id == user_id)
-            .filter(Project.active == True)
-            .all()
-        )
+        ]
 
     def soft_delete_project(self, project_id):
         project = (

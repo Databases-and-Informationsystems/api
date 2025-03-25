@@ -32,7 +32,7 @@ class TrainResource(TrainBaseRoute):
         """
         data = request.json
 
-        user_id = self.user_service.get_logged_in_user_id()
+        user_id = self.user_service.get_user_id()
         self.user_service.check_user_schema_accessible(user_id, schema_id)
 
         response = self.service.train_model_for_schema(
@@ -50,7 +50,7 @@ class TrainResource(TrainBaseRoute):
         """
         Fetch possible models for training models from pipeline microservice
         """
-        user_id = self.user_service.get_logged_in_user_id()
+        user_id = self.user_service.get_user_id()
         self.user_service.check_user_schema_accessible(user_id, schema_id)
 
         steps = ["mention", "entity", "relation"]

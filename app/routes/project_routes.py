@@ -5,8 +5,6 @@ from app.routes.base_routes import AuthorizedBaseRoute
 from app.services.project_service import project_service, ProjectService
 from app.dtos import (
     project_input_dto,
-    project_user_output_list_dto,
-    project_delete_output_model,
     project_output_dto,
 )
 
@@ -31,28 +29,30 @@ class ProjectRoutes(ProjectBaseRoute):
         """
         request_data = request.get_json()
 
-        user_id = self.user_service.get_logged_in_user_id()
-        self.user_service.check_user_in_team(user_id, request_data["team_id"])
+        user_id = self.user_service.get_user_id()
+        self.user_service.check_user_in_team(user_id, request_data["team"]["id"])
         self.user_service.check_user_schema_accessible(
-            user_id, request_data["schema_id"]
+            user_id, request_data["schema"]["id"]
         )
 
-        return self.service.create_project(
+        project = self.service.create_project(
             user_id,
-            request_data["team_id"],
-            request_data["schema_id"],
+            request_data["team"]["id"],
+            request_data["schema"]["id"],
             request_data["name"],
         )
 
-    @ns.marshal_with(project_user_output_list_dto)
+        return project.to_json()
+
+    @ns.marshal_with(project_output_dto, as_list=True)
     def get(self):
         """
         Fetch all projects the user has access to.
         """
-        user_id = self.user_service.get_logged_in_user_id()
+        user_id = self.user_service.get_user_id()
 
-        response = self.service.get_projects_by_user(user_id)
-        return response
+        projects = self.service.get_projects_by_user(user_id)
+        return [p.to_json() for p in projects]
 
 
 @ns.route("/<int:project_id>")
@@ -60,13 +60,22 @@ class ProjectRoutes(ProjectBaseRoute):
 @ns.response(404, "Project not found")
 class ProjectDeletionResource(ProjectBaseRoute):
 
-    @ns.marshal_with(
-        project_delete_output_model, description="Project set to inactive successfully"
-    )
+    @ns.response(204, "Successfully soft deleted project")
     @ns.doc(description="Soft-delete a Project by setting 'active' to False")
     def delete(self, project_id):
-        user_id = self.user_service.get_logged_in_user_id()
+        user_id = self.user_service.get_user_id()
         self.user_service.check_user_project_accessible(user_id, project_id)
 
-        response = self.service.soft_delete_project(project_id)
-        return response
+        self.service.soft_delete_project(project_id)
+        return "", 204
+
+    @ns.marshal_with(project_output_dto)
+    def get(self, project_id):
+        """
+        Fetch all projects the user has access to.
+        """
+        user_id = self.user_service.get_user_id()
+        self.user_service.check_user_project_accessible(user_id, project_id)
+
+        project = self.service.get_project_by_id(project_id)
+        return project.to_json()

@@ -1,5 +1,8 @@
+from typing import List
+
 from werkzeug.exceptions import BadRequest, NotFound, Conflict
 
+from app.models.buisness_models import BMention
 from app.repositories.mention_repository import MentionRepository
 from app.services.schema_service import SchemaService, schema_service
 from app.services.token_service import TokenService, token_service
@@ -43,45 +46,11 @@ class MentionService:
         self.token_service = token_service
         self.schema_service = schema_service
 
-    def get_mentions_by_document_edit(self, document_edit_id):
+    def get_mentions_by_document_edit(self, document_edit_id: int) -> List[BMention]:
         if not isinstance(document_edit_id, int) or document_edit_id <= 0:
             raise BadRequest("Invalid document edit ID. It must be a positive integer.")
 
-        results = self.__mention_repository.get_mentions_with_tokens_by_document_edit(
-            document_edit_id
-        )
-
-        mentions_dict = {}
-        for row in results:
-            if row.mention_id not in mentions_dict:
-                mentions_dict[row.mention_id] = {
-                    "id": row.mention_id,
-                    "tag": row.tag,
-                    "isShownRecommendation": row.isShownRecommendation,
-                    "document_edit_id": row.document_edit_id,
-                    "document_recommendation_id": row.document_recommendation_id,
-                    "entity_id": row.entity_id,
-                    "tokens": [],
-                    "schema_mention": {
-                        "id": row.schema_mention_id,
-                        "tag": row.tag,
-                        "description": row.description,
-                        "color": row.color,
-                        "entityPossible": row.entityPossible,
-                    },
-                }
-
-            if row.token_id is not None:
-                mentions_dict[row.mention_id]["tokens"].append(
-                    {
-                        "id": row.token_id,
-                        "text": row.text,
-                        "document_index": row.document_index,
-                        "sentence_index": row.sentence_index,
-                        "pos_tag": row.pos_tag,
-                    }
-                )
-        return {"mentions": list(mentions_dict.values())}
+        return self.__mention_repository.get_mentions_by_edit_ids([document_edit_id])
 
     def get_mention_dto_by_id(self, mention_id):
         """
@@ -109,7 +78,9 @@ class MentionService:
             },
         }
 
-    def create_mentions(self, document_edit_id, schema_mention_id, token_ids):
+    def create_mention(
+        self, document_edit_id, schema_mention_id, token_ids
+    ) -> BMention:
 
         # Check that tokens belong to this document
         self.token_service.check_tokens_in_document_edit(token_ids, document_edit_id)
@@ -137,7 +108,7 @@ class MentionService:
         for token_id in token_ids:
             self.token_mention_service.create_token_mention(token_id, mention.id)
 
-        return self.get_mention_dto_by_id(mention.id)
+        return self.get_mention_by_id(mention.id)
 
     def add_to_entity(self, entity_id: int, mention_id: int):
         """
@@ -348,7 +319,7 @@ class MentionService:
         self.__mention_repository.update_is_shown_recommendation(mention_id, False)
         return {"message": "Mention successfully rejected."}
 
-    def get_mention_by_id(self, mention_id):
+    def get_mention_by_id(self, mention_id) -> BMention:
         """
         Returns mention database entry for given mention ID.
         :param mention_id: MentionID to fetch.

@@ -5,7 +5,6 @@ from werkzeug.exceptions import BadRequest
 
 from app.dtos import (
     schema_output_dto,
-    schema_output_list_dto,
     schema_input_dto,
     get_recommendation_models_output_dto,
 )
@@ -24,18 +23,20 @@ class SchemaBaseRoute(AuthorizedBaseRoute):
 @ns.response(404, "Data not found")
 class SchemaResource(SchemaBaseRoute):
 
-    @ns.marshal_with(schema_output_list_dto)
+    @ns.marshal_with(schema_output_dto, as_list=True)
     def get(self):
         """
         Fetch all schemas the user has access to
         """
-        user_id = self.user_service.get_logged_in_user_id()
+        user_id = self.user_service.get_user_id()
 
-        return self.service.get_schemas_by_user(user_id)
+        return [
+            schema.to_json() for schema in self.service.get_schemas_by_user(user_id)
+        ]
 
     @ns.doc(
         params={
-            "team_id": {
+            "teamId": {
                 "type": "integer",
                 "required": True,
                 "description": "Target team of the schema.",
@@ -50,10 +51,10 @@ class SchemaResource(SchemaBaseRoute):
         """
         import_schema = request.get_json()
 
-        team_id = request.args.get("team_id")
+        team_id = request.args.get("teamId")
         self.verify_positive_integer(team_id)
 
-        user_id = self.user_service.get_logged_in_user_id()
+        user_id = self.user_service.get_user_id()
         self.user_service.check_user_in_team(user_id, team_id)
 
         return self.service.create_extended_schema(import_schema, int(team_id))
@@ -63,17 +64,31 @@ class SchemaResource(SchemaBaseRoute):
 @ns.doc(params={"schema_id": "A Schema ID"})
 @ns.response(403, "Authorization required")
 @ns.response(404, "Data not found")
-class SchemaQueryResource(SchemaBaseRoute):
+class SchemaIdResource(SchemaBaseRoute):
 
     @ns.marshal_with(schema_output_dto)
     def get(self, schema_id):
         """
         Fetch schema by schema ID
         """
-        user_id = self.user_service.get_logged_in_user_id()
+        user_id = self.user_service.get_user_id()
         self.user_service.check_user_schema_accessible(user_id, schema_id)
 
-        response = self.service.get_schema_by_id(schema_id)
+        schema = self.service.get_schema_by_id(schema_id)
+        return schema.to_json()
+
+    @ns.doc(description="Update schema by schema ID")
+    @ns.expect(schema_input_dto)
+    @ns.marshal_with(schema_output_dto)
+    def put(self, schema_id):
+        """
+        Update the schema by adding or removing mentions, relations, and constraints.
+        """
+        if not schema_id:
+            raise BadRequest("Schema ID is required.")
+
+        data = request.get_json()
+        response = self.service.update_schema(data, schema_id)
         return response
 
 
@@ -86,7 +101,7 @@ class ModelRoutes(SchemaBaseRoute):
         Fetch recommendation models  of schema with possible settings-
         """
 
-        user_id = self.user_service.get_logged_in_user_id()
+        user_id = self.user_service.get_user_id()
         self.user_service.check_user_schema_accessible(user_id, schema_id)
 
         models = schema_service.get_models_by_schema(schema_id)
@@ -123,34 +138,4 @@ class ModelRoutes(SchemaBaseRoute):
                     model_response["id"] = model["id"]
                     response[step].append(model_response)
 
-        return response
-
-
-@ns.route("/<int:schema_id>")
-@ns.doc(params={"schema_id": "A Schema ID"})
-@ns.response(403, "Authorization required")
-@ns.response(404, "Data not found")
-class SchemaUpdateResource(SchemaBaseRoute):
-
-    @ns.doc(description="Update schema by schema ID")
-    @ns.doc(
-        params={
-            "schema_id": {
-                "type": "integer",
-                "required": True,
-                "description": "ID of the schema to be updated.",
-            },
-        }
-    )
-    @ns.expect(schema_input_dto)
-    @ns.marshal_with(schema_output_dto)
-    def put(self, schema_id):
-        """
-        Update the schema by adding or removing mentions, relations, and constraints.
-        """
-        if not schema_id:
-            raise BadRequest("Schema ID is required.")
-
-        data = request.get_json()
-        response = self.service.update_schema(data, schema_id)
         return response

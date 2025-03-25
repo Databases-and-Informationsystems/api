@@ -1,4 +1,7 @@
-from app.models import Mention, TokenMention, SchemaMention, Token
+import typing
+
+from app.models.buisness_models import BMention
+from app.models.db_models import Mention, TokenMention, SchemaMention, Token
 from app.repositories.base_repository import BaseRepository
 
 
@@ -128,20 +131,36 @@ class MentionRepository(BaseRepository):
         return self.store_object(mention)
 
     def get_mentions_by_document_recommendation(self, document_recommendation_id):
-        return (
-            self.get_session()
-            .query(Mention)
-            .filter(Mention.document_recommendation_id == document_recommendation_id)
-            .all()
-        )
+        return [
+            BMention.from_db(m)
+            for m in (
+                self.get_session()
+                .query(Mention)
+                .filter(
+                    Mention.document_recommendation_id == document_recommendation_id
+                )
+                .all()
+            )
+        ]
 
-    def get_mention_by_id(self, mention_id):
-        return self.get_session().query(Mention).filter_by(id=mention_id).first()
+    def get_mention_by_id(self, mention_id) -> typing.Optional[BMention]:
+        mention = (
+            self.get_session().query(Mention).filter_by(id=mention_id).one_or_none()
+        )
+        if mention is None:
+            return None
+        return BMention.from_db(mention)
 
     def delete_mention_by_id(self, mention_id):
         mention = self.get_session().query(Mention).get(mention_id)
         if not mention:
             return False
+        tokensMentions = (
+            self.get_session().query(TokenMention).filter_by(mention_id=mention_id)
+        )
+        for tokenMention in tokensMentions:
+            self.get_session().delete(tokenMention)
+
         self.get_session().delete(mention)
         return True
 
@@ -164,12 +183,15 @@ class MentionRepository(BaseRepository):
         if not isinstance(entity_id, int) or entity_id <= 0:
             raise ValueError("Invalid entity ID. It must be a positive integer.")
 
-        return (
-            self.get_session()
-            .query(Mention)
-            .filter(Mention.entity_id == entity_id)
-            .all()
-        )
+        return [
+            BMention.from_db(m)
+            for m in (
+                self.get_session()
+                .query(Mention)
+                .filter(Mention.entity_id == entity_id)
+                .all()
+            )
+        ]
 
     def update_mention(self, mention_id, schema_mention_id, entity_id):
         mention = self.get_mention_by_id(mention_id)
@@ -192,34 +214,32 @@ class MentionRepository(BaseRepository):
         return mention
 
     def get_recommendations_by_document_edit(self, document_edit_id):
-        return (
-            self.get_session()
-            .query(Mention)
-            .filter(Mention.document_edit_id == document_edit_id)
-            .filter(Mention.isShownRecommendation == True)
-            .all()
-        )
-
-    def get_mentions_by_edit_ids(self, document_edit_ids):
-        return (
-            self.get_session()
-            .query(
-                Mention.id,
-                Mention.document_edit_id,
-                SchemaMention.tag,
-                Mention.document_edit_id,
-                Mention.entity_id,
-                TokenMention.token_id,
-                Token.id.label("token_id"),
-                Token.text,
-                Token.pos_tag,
-                Token.sentence_index,
-                Token.document_index,
+        return [
+            BMention.from_db(m)
+            for m in (
+                self.get_session()
+                .query(Mention)
+                .filter(Mention.document_edit_id == document_edit_id)
+                .filter(Mention.isShownRecommendation == True)
+                .all()
             )
-            .join(SchemaMention, SchemaMention.id == Mention.schema_mention_id)
-            .join(TokenMention, TokenMention.mention_id == Mention.id)
-            .join(Token, Token.id == TokenMention.token_id)
-            .filter(Mention.document_edit_id.in_(document_edit_ids))
-            .filter(Mention.document_recommendation_id.is_(None))
-            .all()
-        )
+        ]
+
+    def get_mentions_by_edit_ids(
+        self, document_edit_ids: typing.List[int]
+    ) -> typing.List[BMention]:
+        return [
+            BMention.from_db(mention)
+            for mention in (
+                self.get_session()
+                .query(
+                    Mention,
+                )
+                # .join(SchemaMention, SchemaMention.id == Mention.schema_mention_id)
+                # .join(TokenMention, TokenMention.mention_id == Mention.id)
+                # .join(Token, Token.id == TokenMention.token_id)
+                .filter(Mention.document_edit_id.in_(document_edit_ids))
+                .filter(Mention.document_recommendation_id.is_(None))
+                .all()
+            )
+        ]

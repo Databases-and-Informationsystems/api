@@ -6,6 +6,7 @@ from flask_migrate import Migrate
 import logging
 
 from app.db import add_transaction_wrapper
+from app.error_handler import register_error_handlers
 
 
 def create_app(config_class):
@@ -14,6 +15,8 @@ def create_app(config_class):
     app.config.from_object(config_class)
     add_transaction_wrapper(app)
     JWTManager(app)
+
+    register_error_handlers(app)
 
     logging.basicConfig(
         level=logging.DEBUG,  # Set the logging level to DEBUG
@@ -32,6 +35,8 @@ def create_app(config_class):
     from .extension import main, api
 
     app.register_blueprint(main)
+
+    # TODO: This should be in routes.__init__.py
     from app.routes.project_routes import ns as projects
     from app.routes.mention_routes import ns as mentions
     from app.routes.relation_routes import ns as relations
@@ -52,7 +57,7 @@ def create_app(config_class):
     api.add_namespace(documents, path="/documents")
     api.add_namespace(schemas, path="/schemas")
     api.add_namespace(teams, path="/teams")
-    api.add_namespace(document_edit, path="/document_edits")
+    api.add_namespace(document_edit, path="/document-edits")
     api.add_namespace(auth, path="/auth")
     api.add_namespace(tokens, path="/tokens")
     api.add_namespace(imports, path="/imports")

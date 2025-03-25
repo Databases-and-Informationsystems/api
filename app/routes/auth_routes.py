@@ -1,10 +1,11 @@
 from flask import request
 from flask_restx import Namespace
+
+from app.models.buisness_models import BUser
 from app.routes.base_routes import AuthorizedBaseRoute, UnauthorizedBaseRoute
 from app.services.user_service import user_service, UserService
 from app.dtos import (
     signup_input_dto,
-    signup_output_dto,
     login_output_dto,
     login_input_dto,
     user_output_dto,
@@ -27,17 +28,18 @@ class UserBaseRoute(AuthorizedBaseRoute):
 class SignupRoute(AuthBaseRoute):
 
     @ns.doc(description="Sign up a new user")
-    @ns.marshal_with(signup_output_dto)
-    @ns.expect(signup_input_dto)  # Use the DTO here
+    @ns.marshal_with(login_output_dto)
+    @ns.expect(signup_input_dto)
     def post(self):
         request_data = request.get_json()
 
-        username = request_data.get("username")
-        email = request_data.get("email")
-        password = request_data.get("password")
+        user = BUser.from_json(request_data)
 
-        self.service.signup(username, email, password)
-        return {"message": "User created successfully"}
+        user, token = self.service.signup(user)
+        return {
+            "token": token,
+            "user": user.to_json(),
+        }
 
 
 @ns.route("/login")
@@ -46,15 +48,18 @@ class LoginRoute(AuthBaseRoute):
 
     @ns.doc(description="Log in an existing user")
     @ns.marshal_with(login_output_dto)
-    @ns.expect(login_input_dto)  # Use the DTO here
+    @ns.expect(login_input_dto)
     def post(self):
         request_data = request.get_json()
         email = request_data.get("email")
         password = request_data.get("password")
 
-        result = self.service.login(email, password)
+        user, token = self.service.login(email, password)
 
-        return result, 200
+        return {
+            "jwt": token,
+            "user": user.to_json(),
+        }
 
 
 @ns.route("/update-profile")
@@ -75,7 +80,7 @@ class UpdateProfileRoute(UserBaseRoute):
         """
         data = request.get_json()
 
-        user_id = self.user_service.get_logged_in_user_id()
+        user_id = self.user_service.get_user_id()
 
         updated_user = self.service.update_user_data(
             user_id,

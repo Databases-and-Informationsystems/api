@@ -1,10 +1,20 @@
+import typing
+
 from werkzeug.exceptions import BadRequest, NotFound
 
+from app.models.buisness_models import (
+    BMention,
+    BDocumentEdit,
+    BToken,
+    BEntity,
+    BRelation,
+)
 from app.repositories.document_edit_repository import DocumentEditRepository
 from app.services.document_recommendation_service import (
     DocumentRecommendationService,
     document_recommendation_service,
 )
+from app.services.document_service import DocumentService, document_service
 from app.services.entity_service import EntityService, entity_service
 from app.services.f1_score_service import f1_score_service, F1ScoreService
 from app.services.schema_service import SchemaService, schema_service
@@ -17,6 +27,7 @@ class DocumentEditService:
     __document_edit_repository: DocumentEditRepository
     document_recommendation_service: DocumentRecommendationService
     token_service: TokenService
+    document_service: DocumentService
     mention_service: MentionService
     relation_service: RelationService
     schema_service: SchemaService
@@ -28,6 +39,7 @@ class DocumentEditService:
         document_edit_repository,
         document_recommendation_service,
         token_service,
+        document_service,
         mention_service,
         relation_service,
         schema_service,
@@ -37,6 +49,7 @@ class DocumentEditService:
         self.__document_edit_repository = document_edit_repository
         self.document_recommendation_service = document_recommendation_service
         self.token_service = token_service
+        self.document_service = document_service
         self.mention_service = mention_service
         self.relation_service = relation_service
         self.schema_service = schema_service
@@ -161,6 +174,9 @@ class DocumentEditService:
             "state": {"id": 5, "state": "MENTION_SUGGESTION"},
         }
 
+    def get_ids_by_user(self, user_id: int) -> typing.List[int]:
+        return self.__document_edit_repository.get_ids_by_user(user_id)
+
     def __get_document_edit_by_document(self, document_id, user_id):
         """
         Fetch DocumentEdit database entry by document ID and user ID.
@@ -243,44 +259,34 @@ class DocumentEditService:
             return
         self.__document_edit_repository.bulk_soft_delete_edits(document_ids)
 
-    def get_document_edit_by_id(self, document_edit_id):
-        """
-        Fetch DocumentEdit object with associated mentions and relations.
-
-        :param document_edit_id: DocumentEdit ID of the annotation.
-        :return: finished_document_edit_output_dto
-        :raises NotFound: If DocumentEdit does not exist.
-        """
-        document_edit = self.__document_edit_repository.get_document_edit_by_id(
-            document_edit_id
+    def get_document_edit_by_id(
+        self, document_edit_id: int, user_id: int
+    ) -> BDocumentEdit:
+        document_edit: typing.Optional[BDocumentEdit] = (
+            self.__document_edit_repository.get_document_edit_by_id(document_edit_id)
         )
         if document_edit is None:
             raise NotFound("Document Edit doesnt exist")
 
-        tokens_data = self.token_service.get_tokens_by_document(
-            document_edit.document_id
+        document_edit.document = self.document_service.get_document_by_id(
+            document_edit.document.id, user_id, True
         )
-        tokens = tokens_data.get("tokens", [])
-        mentions_data = self.mention_service.get_mentions_by_document_edit(
-            document_edit_id
+        mentions: typing.List[BMention] = (
+            self.mention_service.get_mentions_by_document_edit(document_edit_id)
         )
-        relations_data = self.relation_service.get_relations_by_document_edit(
-            document_edit_id
+        relations: typing.List[BRelation] = (
+            self.relation_service.get_relations_by_document_edit(document_edit_id)
         )
-        return {
-            "document": {
-                "id": document_edit.document_id,
-                "tokens": tokens,
-            },
-            "schema_id": document_edit.schema_id,
-            "mentions": mentions_data["mentions"],
-            "relations": relations_data["relations"],
-            "state": {
-                "id": document_edit.state_id,
-                "state": document_edit.state_name,
-            },
-        }
+        entities: typing.List[BEntity] = (
+            self.entity_service.get_entities_by_document_edit(document_edit_id)
+        )
+        return (
+            document_edit.with_mentions(mentions)
+            .with_relations(relations)
+            .with_entities(entities)
+        )
 
+    # TODO transformations / mappers should be added to business model
     def get_document_edit_by_id_for_difference_calc(self, document_edit_id):
         document_edit = self.__document_edit_repository.get_document_edit_by_id(
             document_edit_id
@@ -710,6 +716,7 @@ document_edit_service = DocumentEditService(
     DocumentEditRepository(),
     document_recommendation_service,
     token_service,
+    document_service,
     mention_service,
     relation_service,
     schema_service,

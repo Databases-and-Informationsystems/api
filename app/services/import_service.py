@@ -1,5 +1,6 @@
 import typing
 
+from app.models.buisness_models import BSchema
 from app.repositories.document_repository import DocumentRepository
 from app.services.document_edit_service import (
     document_edit_service,
@@ -13,12 +14,12 @@ from app.services.schema_service import SchemaService, schema_service
 from app.services.token_service import TokenService, token_service
 
 
-def _verify_constraint(schema, tag: str, head_mention, tail_mention) -> any:
+def _verify_constraint(schema: BSchema, tag: str, head_mention, tail_mention) -> any:
     schema_head_mention = next(
         (
             mention
-            for mention in schema["schema_mentions"]
-            if mention["tag"] == head_mention["tag"]
+            for mention in schema.schema_mentions
+            if mention.tag == head_mention["tag"]
         ),
         None,
     )
@@ -32,8 +33,8 @@ def _verify_constraint(schema, tag: str, head_mention, tail_mention) -> any:
     schema_tail_mention = next(
         (
             mention
-            for mention in schema["schema_mentions"]
-            if mention["tag"] == tail_mention["tag"]
+            for mention in schema.schema_mentions
+            if mention.tag == tail_mention["tag"]
         ),
         None,
     )
@@ -47,21 +48,19 @@ def _verify_constraint(schema, tag: str, head_mention, tail_mention) -> any:
     constraint = next(
         (
             constraint
-            for constraint in schema["schema_constraints"]
-            if constraint["schema_relation"]["tag"] == tag
+            for constraint in schema.schema_constraints
+            if constraint.schema_relation.tag == tag
             and (
                 (
-                    constraint["schema_mention_head"]["tag"]
-                    == schema_head_mention.get("tag")
-                    and constraint["schema_mention_tail"]["tag"]
+                    constraint.schema_mention_head.tag == schema_head_mention.get("tag")
+                    and constraint.schema_mention_tail.tag
                     == schema_tail_mention.get("tag")
                 )
                 or (
-                    constraint["schema_mention_tail"]["tag"]
-                    == schema_head_mention.get("tag")
-                    and constraint["schema_mention_head"]["tag"]
+                    constraint.schema_mention_tail.tag == schema_head_mention.get("tag")
+                    and constraint.schema_mention_head.tag
                     == schema_tail_mention.get("tag")
-                    and constraint["is_directed"] == False
+                    and constraint.is_directed == False
                 )
             )
         ),
@@ -145,15 +144,15 @@ class ImportService:
         mentions_by_index = {}
         for index, mention in enumerate(mentions):
             schema_mention_id = None
-            for schema_mention in schema["schema_mentions"]:
-                if schema_mention.get("tag") == mention.get("type"):
+            for schema_mention in schema.schema_mentions:
+                if schema_mention.tag == mention.get("type"):
                     schema_mention_id = schema_mention.get("id")
                     break
             if schema_mention_id is None:
                 raise ImportError(
                     f'Given Mention type "{mention.get("type")}" does not exist in the schema of the project'
                 )
-            created_mention = self._mention_service.create_mentions(
+            created_mention = self._mention_service.create_mention(
                 document_edit_id=document_edit["id"],
                 schema_mention_id=schema_mention_id,
                 token_ids=[

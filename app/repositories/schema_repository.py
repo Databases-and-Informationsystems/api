@@ -1,7 +1,15 @@
+import typing
+
 from sqlalchemy.orm import aliased
 import logging
 
-from app.models import (
+from app.models.buisness_models import (
+    BSchemaMention,
+    BSchemaRelation,
+    BSchema,
+    BSchemaConstraint,
+)
+from app.models.db_models import (
     Schema,
     Team,
     ModellingLanguage,
@@ -19,59 +27,65 @@ from app.repositories.base_repository import BaseRepository
 
 
 class SchemaRepository(BaseRepository):
-    def get_schema_by_id(self, schema_id):
-        return (
+    def get_schema_by_id(self, schema_id) -> typing.Optional[BSchema]:
+        schema = (
             self.get_session()
-            .query(
-                Schema.id,
-                Schema.isFixed,
-                Schema.team_id,
-                Schema.name,
-                Team.name.label("team_name"),
-                ModellingLanguage.type.label("modelling_language"),
-            )
-            .join(Team, Schema.team_id == Team.id)
-            .join(
-                ModellingLanguage, ModellingLanguage.id == Schema.modellingLanguage_id
-            )
+            .query(Schema)
             .filter((Schema.id == schema_id) & (Schema.active == True))
             .first()
         )
 
-    def get_schema_ids_by_user(self, user_id):
-        return (
-            self.get_session()
+        return BSchema.from_db(schema) if schema else None
+
+    def get_schemas_by_user(self, user_id) -> typing.List[BSchema]:
+        return [
+            BSchema.from_db(s)
+            for s in (
+                self.get_session()
+                .query(Schema)
+                .select_from(UserTeam)
+                .join(Schema, Schema.team_id == UserTeam.team_id)
+                .filter((UserTeam.user_id == user_id) & (Schema.active == True))
+                .all()
+            )
+        ]
+
+    def get_ids_by_user(self, user_id) -> typing.List[int]:
+        return [
+            r[0]
+            for r in self.get_session()
             .query(Schema.id)
             .select_from(UserTeam)
             .join(Schema, Schema.team_id == UserTeam.team_id)
             .filter((UserTeam.user_id == user_id) & (Schema.active == True))
             .all()
-        )
+        ]
 
-    def get_schema_mentions_by_schema(self, schema_id):
-        return (
-            self.get_session()
-            .query(SchemaMention)
-            .filter(SchemaMention.schema_id == schema_id)
-            .all()
-        )
+    def get_schema_mentions_by_schema(self, schema_id) -> typing.List[BSchemaMention]:
+        return [
+            BSchemaMention.from_db(sm)
+            for sm in (
+                self.get_session()
+                .query(SchemaMention)
+                .filter(SchemaMention.schema_id == schema_id)
+                .all()
+            )
+        ]
 
-    def get_schema_relations_by_schema(self, schema_id):
+    def get_schema_relations_by_schema(self, schema_id) -> typing.List[BSchemaRelation]:
 
-        schema_relations = (
-            self.get_session()
-            .query(SchemaRelation)
-            .filter(SchemaRelation.schema_id == schema_id)
-            .all()
-        )
+        return [
+            BSchemaRelation.from_db(sr)
+            for sr in (
+                self.get_session()
+                .query(SchemaRelation)
+                .filter(SchemaRelation.schema_id == schema_id)
+                .all()
+            )
+        ]
 
-        logging.debug(f"Schema Relations Retrieved: {schema_relations}")
-        logging.debug(f"Type of Retrieved Schema Relations: {type(schema_relations)}")
-
-        return schema_relations
-
-    def get_by_project(self, project_id):
-        return (
+    def get_by_project(self, project_id) -> typing.Optional[BSchema]:
+        schema = (
             self.get_session()
             .query(
                 Schema.id,
@@ -89,46 +103,39 @@ class SchemaRepository(BaseRepository):
             .filter(Project.id == project_id)
             .first()
         )
+        return BSchema.from_db(schema) if schema else None
 
-    def get_schema_constraints_by_schema(self, schema_id):
+    def get_schema_constraints_by_schema(
+        self, schema_id
+    ) -> typing.List[BSchemaConstraint]:
         mention_head = aliased(SchemaMention)
         mention_tail = aliased(SchemaMention)
-        return (
-            self.get_session()
-            .query(
-                SchemaConstraint.id,
-                SchemaConstraint.isDirected,
-                SchemaRelation.id.label("relation_id"),
-                SchemaRelation.tag.label("relation_tag"),
-                SchemaRelation.description.label("relation_description"),
-                mention_head.id.label("mention_head_id"),
-                mention_tail.id.label("mention_tail_id"),
-                mention_head.tag.label("mention_head_tag"),
-                mention_tail.tag.label("mention_tail_tag"),
-                mention_head.description.label("mention_head_description"),
-                mention_tail.description.label("mention_tail_description"),
-                mention_head.color.label("mention_head_color"),
-                mention_tail.color.label("mention_tail_color"),
-                mention_head.entityPossible.label("mention_head_entityPossible"),
-                mention_tail.entityPossible.label("mention_tail_entityPossible"),
+        return [
+            BSchemaConstraint.from_db(sc)
+            for sc in (
+                self.get_session()
+                .query(
+                    SchemaConstraint,
+                )
+                .join(
+                    mention_head,
+                    mention_head.id == SchemaConstraint.schema_mention_id_head,
+                )
+                .join(
+                    mention_tail,
+                    mention_tail.id == SchemaConstraint.schema_mention_id_tail,
+                )
+                .join(
+                    SchemaRelation,
+                    SchemaRelation.id == SchemaConstraint.schema_relation_id,
+                )
+                .filter(
+                    (SchemaRelation.schema_id == schema_id)
+                    & (SchemaConstraint.schema_relation_id == SchemaRelation.id)
+                )
+                .all()
             )
-            .join(
-                mention_head,
-                mention_head.id == SchemaConstraint.schema_mention_id_head,
-            )
-            .join(
-                mention_tail,
-                mention_tail.id == SchemaConstraint.schema_mention_id_tail,
-            )
-            .join(
-                SchemaRelation, SchemaRelation.id == SchemaConstraint.schema_relation_id
-            )
-            .filter(
-                (SchemaRelation.schema_id == schema_id)
-                & (SchemaConstraint.schema_relation_id == SchemaRelation.id)
-            )
-            .all()
-        )
+        ]
 
     def create_schema(
         self, modelling_language_id: int, team_id: int, name: str

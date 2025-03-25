@@ -21,7 +21,7 @@ class TokenQueryResource(TokenBaseRoute):
         """
         Fetch tokens of document
         """
-        user_id = self.user_service.get_logged_in_user_id()
+        user_id = self.user_service.get_user_id()
         self.user_service.check_user_document_accessible(user_id, document_id)
 
         response = self.service.get_tokens_by_document(document_id)

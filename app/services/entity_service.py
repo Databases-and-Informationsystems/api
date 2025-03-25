@@ -1,4 +1,7 @@
-from app.models import Entity
+import typing
+
+from app.models.buisness_models import BEntity
+from app.models.db_models import Entity
 from app.repositories.entity_repository import EntityRepository
 from werkzeug.exceptions import BadRequest, NotFound
 
@@ -28,7 +31,7 @@ class EntityService:
         self.entity_mention_service = entity_mention_service
         self.mention_service = mention_service
 
-    def get_entities_by_document_edit(self, document_edit_id):
+    def get_entities_by_document_edit(self, document_edit_id) -> typing.List[BEntity]:
         if not isinstance(document_edit_id, int) or document_edit_id <= 0:
             raise BadRequest("Invalid document edit ID. It must be a positive integer.")
 
@@ -37,24 +40,11 @@ class EntityService:
         )
 
         mentions = self.mention_service.get_mentions_by_document_edit(document_edit_id)
-        if not entities:
-            raise NotFound("No entities found for the given document edit.")
 
-        entity_list = [
-            {
-                "id": entity.id,
-                "isShownRecommendation": entity.isShownRecommendation,
-                "document_edit_id": entity.document_edit_id,
-                "document_recommendation_id": entity.document_recommendation_id,
-                "mentions": [
-                    mention
-                    for mention in mentions["mentions"]
-                    if mention["entity_id"] == entity.id
-                ],
-            }
-            for entity in entities
-        ]
-        return {"entities": entity_list}
+        for entity in entities:
+            entity.mentions = [m for m in mentions if m.entity_id == entity.id]
+
+        return entities
 
     def create_in_edit(self, document_edit_id: int) -> Entity:
         """

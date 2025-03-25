@@ -42,7 +42,7 @@ class Imports(ImportBaseRoute):
         project_id = int(request.args.get("project_id"))
         self.verify_positive_integer(project_id)
 
-        user_id = self.user_service.get_logged_in_user_id()
+        user_id = self.user_service.get_user_id()
         self.user_service.check_user_project_accessible(user_id, project_id)
 
         source = request.args.get("source")

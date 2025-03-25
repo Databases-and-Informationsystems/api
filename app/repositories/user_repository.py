@@ -1,6 +1,8 @@
+import typing
+
 from sqlalchemy import and_
 from werkzeug.exceptions import NotFound
-from app.models import (
+from app.models.db_models import (
     UserTeam,
     DocumentEdit,
     User,
@@ -13,12 +15,14 @@ from app.models import (
     Relation,
     Mention,
 )
+
+from app.models.buisness_models import BUser
 from app.repositories.base_repository import BaseRepository
 from werkzeug.security import generate_password_hash
 
 
 class UserRepository(BaseRepository):
-    def check_user_in_team(self, user_id, team_id):
+    def is_user_in_team(self, user_id, team_id) -> bool:
         return (
             self.get_session()
             .query(UserTeam)
@@ -26,10 +30,13 @@ class UserRepository(BaseRepository):
             .filter(UserTeam.user_id == user_id, UserTeam.team_id == team_id)
             .filter(Team.active == True)
             .first()
-        )
+        ) is not None
 
-    def get_user_by_email(self, mail):
-        return self.get_session().query(User).filter(User.email == mail).first()
+    def get_user_by_email(self, mail) -> typing.Optional[BUser]:
+        user = self.get_session().query(User).filter(User.email == mail).first()
+        if user is None:
+            return None
+        return BUser.from_db(user)
 
     def get_user_by_document_edit_id(self, document_edit_id) -> int:
         document_edit = (
@@ -46,10 +53,10 @@ class UserRepository(BaseRepository):
     def get_user_by_username(self, username):
         return User.query.filter_by(username=username).first()
 
-    def create_user(self, username, email, hashed_password):
-        new_user = User(username=username, email=email, password=hashed_password)
-        self.get_session().add(new_user)
-        return new_user
+    def create_user(self, user: BUser) -> BUser:
+        new_user = user.to_db()
+        self.store_object(new_user)
+        return BUser.from_db(new_user)
 
     def check_user_document_accessible(self, user_id, document_id):
         return (

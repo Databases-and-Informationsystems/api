@@ -1,5 +1,8 @@
+import typing
+
 from werkzeug.exceptions import BadRequest, NotFound
 
+from app.models.buisness_models import BProject
 from app.services.schema_service import SchemaService, schema_service
 from app.services.user_service import (
     UserService,
@@ -50,37 +53,34 @@ class ProjectService:
             team_id,
             schema_id,
         )
-        return self.__get_project_by_id(project.id)
+        return self.get_project_by_id(project.id)
 
     def team_is_in_project(self, team_id, document_edit_id):
         return team_id == self.__project_repository.get_team_id_by_document_edit_id(
             document_edit_id
         )
 
-    def __get_project_by_id(self, project_id):
+    def get_project_by_id(self, project_id) -> BProject:
         """
         Fetches project by project ID
 
         :param project_id: Project ID to query.
-        :return: project_output_dto
+        :return: BProject
         :raises BadRequest: If project does not exist
         """
         project = self.__project_repository.get_project_by_id(project_id)
+
         if project is None:
             raise BadRequest("Project not found")
-        return self.__build_project(project)
+        return project
 
-    def get_projects_by_user(self, user_id):
+    def get_projects_by_user(self, user_id) -> typing.List[BProject]:
         """
-        Fetches all projects the user has access to.
 
-        :param user_id: User ID to query projects.
-        :return: project_user_output_list_dto
+        :param user_id:
+        :return:
         """
-        projects = self.__project_repository.get_projects_by_user(user_id)
-        if projects is None:
-            return {"projects": []}
-        return {"projects": [self.__build_project(project) for project in projects]}
+        return self.__project_repository.get_projects_by_user(user_id)
 
     def __build_project(self, project):
         """
@@ -112,8 +112,6 @@ class ProjectService:
             raise NotFound("Project not found or already inactive.")
 
         self.document_service.bulk_soft_delete_documents_by_project_id(project_id)
-
-        return {"message": "Project set to inactive successfully."}
 
     def get_projects_by_team(self, team_id):
         projects = self.__project_repository.get_projects_by_team(team_id)

@@ -1,4 +1,7 @@
-from app.models import (
+import typing
+
+from app.models.buisness_models import BDocument, BDocumentEdit
+from app.models.db_models import (
     Document,
     DocumentState,
     Project,
@@ -16,45 +19,46 @@ from sqlalchemy import and_
 class DocumentRepository(BaseRepository):
     DOCUMENT_STATE_ID_FINISHED = 3
 
-    def get_documents_by_user(self, user_id):
-        return (
-            self.get_session()
-            .query(
-                Document.id,
-                Document.content,
-                Document.name,
-                Document.project_id,
-                Project.name.label("project_name"),
-                Project.schema_id,
-                Schema.name.label("schema_name"),
-                Team.name.label("team_name"),
-                Team.id.label("team_id"),
-                DocumentEditState.type.label("document_edit_state"),
-                DocumentEdit.id.label("document_edit_id"),
-                DocumentState.id.label("document_state_id"),
-                DocumentState.type.label("document_state_type"),
-                User.id.label("creator_id"),
-                User.email.label("email"),
-                User.username.label("username"),
+    def get_documents_by_user(self, user_id) -> typing.List[BDocument]:
+        return [
+            BDocument.from_db(d)
+            for d in (
+                self.get_session()
+                .query(Document, DocumentEdit)
+                .select_from(UserTeam)
+                .filter(UserTeam.user_id == user_id)
+                .filter(Document.active == True)
+                .join(Team, UserTeam.team_id == Team.id)
+                .join(Project, Team.id == Project.team_id)
+                .join(Document, Project.id == Document.project_id)
+                .join(DocumentState, DocumentState.id == Document.state_id)
+                .join(Schema, Schema.id == Project.schema_id)
+                .join(User, User.id == Document.creator_id)
+                .outerjoin(
+                    DocumentEdit,
+                    and_(
+                        Document.id == DocumentEdit.document_id,
+                        DocumentEdit.user_id == user_id,
+                    ),
+                )
+                .outerjoin(
+                    DocumentEditState, DocumentEditState.id == DocumentEdit.state_id
+                )
+            ).all()
+        ]
+
+    def get_documents_by_project(
+        self, project_id: str, user_id: str
+    ) -> typing.List[BDocument]:
+        return [
+            BDocument.from_db(d)
+            for d in (
+                self.get_session()
+                .query(Document)
+                .filter(Document.project_id == project_id)
+                .filter(Document.active == True)
             )
-            .select_from(UserTeam)
-            .filter(UserTeam.user_id == user_id)
-            .filter(Document.active == True)
-            .join(Team, UserTeam.team_id == Team.id)
-            .join(Project, Team.id == Project.team_id)
-            .join(Document, Project.id == Document.project_id)
-            .join(DocumentState, DocumentState.id == Document.state_id)
-            .join(Schema, Schema.id == Project.schema_id)
-            .join(User, User.id == Document.creator_id)
-            .outerjoin(
-                DocumentEdit,
-                and_(
-                    Document.id == DocumentEdit.document_id,
-                    DocumentEdit.user_id == user_id,
-                ),
-            )
-            .outerjoin(DocumentEditState, DocumentEditState.id == DocumentEdit.state_id)
-        ).all()
+        ]
 
     def create_document(self, name, content, project_id, user_id):
         """
@@ -79,27 +83,10 @@ class DocumentRepository(BaseRepository):
         self.store_object(document)
         return document
 
-    def get_document_by_id(self, document_id, user_id):
-        return (
+    def get_document_by_id(self, document_id, user_id) -> typing.Optional[BDocument]:
+        document = (
             self.get_session()
-            .query(
-                Document.id,
-                Document.content,
-                Document.name,
-                Document.project_id,
-                Project.name.label("project_name"),
-                Project.schema_id,
-                Schema.name.label("schema_name"),
-                Team.name.label("team_name"),
-                Team.id.label("team_id"),
-                DocumentState.id.label("document_state_id"),
-                DocumentState.type.label("document_state_type"),
-                User.id.label("creator_id"),
-                User.email.label("email"),
-                User.username.label("username"),
-                DocumentEditState.type.label("document_edit_state"),
-                DocumentEdit.id.label("document_edit_id"),
-            )
+            .query(Document)
             .filter(Document.id == document_id)
             .filter(Document.active == True)
             .join(Project, Project.id == Document.project_id)
@@ -116,6 +103,8 @@ class DocumentRepository(BaseRepository):
             )
             .outerjoin(DocumentEditState, DocumentEditState.id == DocumentEdit.state_id)
         ).first()
+
+        return BDocument.from_db(document) if document else None
 
     def save(self, name, content, project_id, creator_id, state_id):
         document = Document(
@@ -171,22 +160,18 @@ class DocumentRepository(BaseRepository):
         )
 
     def get_all_document_edits_with_user_by_document(self, document_id):
-        return (
-            self.get_session()
-            .query(
-                DocumentEdit.id.label("edit_id"),
-                User.id.label("user_id"),
-                User.email.label("user_email"),
-                User.username.label("user_username"),
-                DocumentEditState.id.label("state_id"),
-                DocumentEditState.type.label("state_type"),
+        return [
+            BDocumentEdit.from_db(de)
+            for de in (
+                self.get_session()
+                .query(DocumentEdit)
+                .join(User, User.id == DocumentEdit.user_id)
+                .join(DocumentEditState, DocumentEditState.id == DocumentEdit.state_id)
+                .filter(DocumentEdit.document_id == document_id)
+                .filter(DocumentEdit.active == True)
+                .all()
             )
-            .join(User, User.id == DocumentEdit.user_id)
-            .join(DocumentEditState, DocumentEditState.id == DocumentEdit.state_id)
-            .filter(DocumentEdit.document_id == document_id)
-            .filter(DocumentEdit.active == True)
-            .all()
-        )
+        ]
 
     def update_document_state(self, document_id, new_state_id):
         """

@@ -1,16 +1,44 @@
+import json
+import typing
 from datetime import timedelta
 from app.config import Config
 from werkzeug.exceptions import BadRequest, Forbidden, Unauthorized, NotFound
 from werkzeug.security import generate_password_hash, check_password_hash
-from app.repositories.user_repository import UserRepository
 from flask_jwt_extended import create_access_token, get_jwt_identity
+
+from app.models.buisness_models import BUser
+from app.repositories.user_repository import UserRepository
+from app.services.document_edit_service import (
+    DocumentEditService,
+    document_edit_service,
+)
+from app.services.schema_service import SchemaService, schema_service
+
+
+def create_jwt_token(user: BUser) -> str:
+    expires_delta = timedelta(seconds=Config.JWT_ACCESS_TOKEN_EXPIRES)
+    return create_access_token(
+        identity=json.dumps(user.as_jwt_content()), expires_delta=expires_delta
+    )
 
 
 class UserService:
     __user_repository: UserRepository
+    __document_edit_service: DocumentEditService
+    __schema_service: SchemaService
 
-    def __init__(self, user_repository):
+    def __init__(
+        self,
+        user_repository: UserRepository,
+        document_edit_service: DocumentEditService,
+        schema_service: SchemaService,
+    ):
         self.__user_repository = user_repository
+        self.__document_edit_service = document_edit_service
+        self.__schema_service = schema_service
+
+    def is_user_in_team(self, user_id: int, team_id: int) -> bool:
+        return self.__user_repository.is_user_in_team(user_id, team_id)
 
     def check_user_in_team(self, user_id, team_id):
         """
@@ -19,44 +47,66 @@ class UserService:
         :param user_id: User ID
         :param team_id: Team ID
         :raises Forbidden: If user does not belong to team
+
         """
-        if self.__user_repository.check_user_in_team(user_id, team_id) is None:
+        if self.__user_repository.is_user_in_team(user_id, team_id) is None:
             raise Forbidden("You are not part of this team")
 
-    def get_logged_in_user_id(self):
+    # TODO should be in session Service
+    def get_user(self) -> BUser:
         """
-        Get currently logged-in user
+        Get the full JSON object of the currently logged-in user.
 
-        :return: User ID
-        :raises Unauthorized: If no user is not logged in
+        :return: JSON object containing user identity information.
+        :raises Unauthorized: If no user is logged in.
         """
         try:
-            user_id = int(get_jwt_identity())
-            return user_id
+            identity = get_jwt_identity()
+            user_data = json.loads(identity)
+            user = BUser.from_json(user_data)
+            return user
         except Exception as e:
             raise Unauthorized(str(e))
 
-    def get_user_by_email(self, mail):
+    # TODO should be in session Service
+    def get_user_id(self) -> int:
+        """
+        Get the ID of the currently logged-in user from the JWT identity.
+
+        :return: User ID
+        :raises Unauthorized: If no user is logged in.
+        """
+        user = self.get_user()
+        return user.id
+
+    def get_user_by_email(self, mail) -> typing.Optional[BUser]:
         return self.__user_repository.get_user_by_email(mail)
 
     def get_user_by_username(self, username):
         return self.__user_repository.get_user_by_username(username)
 
-    def create_user(self, username, email, hashed_password):
-        return self.__user_repository.create_user(username, email, hashed_password)
+    def create_user(self, user: BUser) -> BUser:
+        return self.__user_repository.create_user(user)
 
-    def signup(self, username, email, password):
-        if self.get_user_by_username(username):
+    def signup(self, user: BUser) -> typing.Tuple[BUser, str]:
+        if self.get_user_by_username(user.username):
             raise BadRequest("Username already exists")
-        if self.get_user_by_email(email):
+        if self.get_user_by_email(user.email):
             raise BadRequest("Email already exists")
 
-        if not password or len(password) < 6:  # Example validation
+        # TODO use proper password safety validation
+        if not user.password or len(user.password) < 6:  # Example validation
             raise BadRequest("Password must be at least 6 characters long")
 
-        hashed_password = generate_password_hash(password, method="pbkdf2:sha256")
+        user.password = generate_password_hash(user.password, method="pbkdf2:sha256")
 
-        self.create_user(username, email, hashed_password)
+        user = (
+            self.create_user(user)
+            .with_document_edits(self.__document_edit_service.get_ids_by_user(user.id))
+            .with_schemas(self.__schema_service.get_ids_by_user(user.id))
+        )
+        token = create_jwt_token(user)
+        return user, token
 
     def check_user_document_accessible(self, user_id, document_id):
         """
@@ -157,17 +207,20 @@ class UserService:
         ):
             raise Forbidden("You cannot access this mention")
 
-    def login(self, email, password):
-        user = self.get_user_by_email(email)
+    def login(self, email, password) -> typing.Tuple[BUser, str]:
+        user: BUser = self.get_user_by_email(email)
         if not user:
             raise Unauthorized("Invalid email or password")
 
         if not check_password_hash(user.password, password):
             raise Unauthorized("Invalid email or password")
-        user_id_str = str(user.id)
-        expires_delta = timedelta(seconds=Config.JWT_ACCESS_TOKEN_EXPIRES)
-        token = create_access_token(identity=user_id_str, expires_delta=expires_delta)
-        return {"token": token}
+
+        user.with_document_edits(
+            self.__document_edit_service.get_ids_by_user(user.id)
+        ).with_schemas(self.__schema_service.get_ids_by_user(user.id))
+
+        token = create_jwt_token(user)
+        return user, token
 
     def update_user_data(self, user_id, username=None, email=None, password=None):
         """
@@ -215,4 +268,8 @@ class UserService:
         return {"id": user.id, "username": user.username, "email": user.email}
 
 
-user_service = UserService(UserRepository())
+user_service = UserService(
+    user_repository=UserRepository(),
+    document_edit_service=document_edit_service,
+    schema_service=schema_service,
+)

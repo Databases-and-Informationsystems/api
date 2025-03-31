@@ -42,7 +42,7 @@ class DocumentEditCreateResource(DocumentEditBaseRoute):
         """
         data = request.get_json()
 
-        document_id = (data.get("document_id"),)
+        document_id = data.get("document_id")
         user_id = self.user_service.get_logged_in_user_id()
 
         self.user_service.check_user_document_accessible(user_id, document_id)
@@ -185,6 +185,7 @@ class DocumentEditSchemaResource(DocumentEditBaseRoute):
 
         response = self.service.get_document_edits_by_schema(schema_id)
         return response
+
 
 @ns.route("/<int:document_edit_id>/f1score")
 @ns.doc(params={"document_edit_id": "A Document ID"})

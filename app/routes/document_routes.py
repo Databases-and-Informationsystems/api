@@ -6,6 +6,7 @@ from app.services.document_service import document_service, DocumentService
 from app.dtos import (
     document_output_dto,
     document_create_dto,
+    document_list_create_dto,
     document_list_dto,
     document_delete_output_dto,
     heatmap_output_list_dto,
@@ -65,6 +66,50 @@ class DocumentRoutes(DocumentBaseRoute):
             file_content=file_content,
         )
         return document_details
+
+
+@ns.route("/list")
+@ns.response(403, "Authorization required")
+@ns.response(404, "Data not found")
+class DocumentListRoutes(DocumentBaseRoute):
+
+    @ns.expect([document_list_create_dto])
+    @ns.response(404, "Data not found.")
+    @ns.marshal_with(
+        document_output_dto,
+        as_list=True,
+        description="Document uploaded successfully.",
+    )
+    @ns.doc(
+        params={
+            "project_id": {
+                "description": "Target project of the documents. (Defines the target schema)",
+                "required": True,
+            },
+        }
+    )
+    def post(self):
+        """
+        Endpoint for uploading a list of documents to a project.
+        """
+        documents = request.json
+
+        project_id = int(request.args.get("project_id"))
+        self.verify_positive_integer(project_id)
+
+        user_id = self.user_service.get_logged_in_user_id()
+        self.user_service.check_user_project_accessible(user_id, project_id)
+
+        # Upload document via service
+        return [
+            self.service.upload_document(
+                user_id,
+                project_id=project_id,
+                file_name=document["file_name"],
+                file_content=document["file_content"],
+            )
+            for document in documents
+        ]
 
 
 @ns.route("/project/<int:project_id>")

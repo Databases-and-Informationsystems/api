@@ -47,3 +47,6 @@ class TokenRepository(BaseRepository):
             .filter(Token.document_id.in_(document_ids))
             .all()
         )
+
+    def get_token_by_id(self, token_id):
+        return self.get_session().query(Token).filter(Token.id == token_id).first()

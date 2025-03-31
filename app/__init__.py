@@ -16,7 +16,7 @@ def create_app(config_class):
     JWTManager(app)
 
     logging.basicConfig(
-        level=logging.DEBUG,  # Set the logging level to DEBUG
+        level=logging.INFO,  # Set the logging level to DEBUG
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",  # Log format
         handlers=[logging.StreamHandler()],  # Output logs to the console
     )
@@ -44,6 +44,7 @@ def create_app(config_class):
     from app.routes.token_routes import ns as tokens
     from app.routes.import_routes import ns as imports
     from app.routes.train_routes import ns as training
+    from app.routes.scope_routes import ns as scopes
 
     api.add_namespace(projects, path="/projects")
     api.add_namespace(mentions, path="/mentions")
@@ -57,6 +58,7 @@ def create_app(config_class):
     api.add_namespace(tokens, path="/tokens")
     api.add_namespace(imports, path="/imports")
     api.add_namespace(training, path="/training")
+    api.add_namespace(scopes, path="/scopes")
 
     if not config_class.TESTING:
         from app.db import db

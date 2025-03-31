@@ -161,6 +161,16 @@ document_create_dto = api.model(
     },
 )
 
+document_list_create_dto = api.model(
+    "DocumentUpload",
+    {
+        "file_name": fields.String(required=True, description="Name of the document"),
+        "file_content": fields.String(
+            required=True, description="Content of the document"
+        ),
+    },
+)
+
 document_create_output_dto = api.model(
     "DocumentUploadOutput",
     {
@@ -246,6 +256,24 @@ schema_constraint_input_dto = api.model(
     },
 )
 
+schema_scope_input_dto = api.model(
+    "SchemaScopeInput",
+    {
+        "type": fields.String(required=True),
+        "description": fields.String(required=True),
+        "color": fields.String(required=False, example="#12AB3C"),
+        "allowed_on_toplevel": fields.Boolean(required=True),
+    },
+)
+
+schema_scope_constraints_input_dto = api.model(
+    "SchemaScopeConstraintInput",
+    {
+        "parent_type": fields.String(required=True),
+        "child_type": fields.String(required=True),
+    },
+)
+
 schema_input_dto = api.model(
     "SchemaInput",
     {
@@ -259,6 +287,12 @@ schema_input_dto = api.model(
         ),
         "schema_constraints": fields.List(
             fields.Nested(schema_constraint_input_dto), required=True
+        ),
+        "schema_scopes": fields.List(
+            fields.Nested(schema_scope_input_dto), required=False
+        ),
+        "schema_scope_constraints": fields.List(
+            fields.Nested(schema_scope_constraints_input_dto), required=False
         ),
     },
 )
@@ -899,3 +933,38 @@ f1_score_dto = api.model(
 document_import_dto = api.model(
     "DocumentImportList", {"documents": fields.List(fields.Raw())}
 )
+
+scope_create_input_dto = api.model(
+    "ScopeCreateInput",
+    {
+        "schema_scope_id": fields.Integer(required=True),
+        "token_start_id": fields.Integer(required=True),
+        "token_end_id": fields.Integer(required=True),
+        "parent_scope_id": fields.Integer(required=False),
+    },
+)
+
+schema_scope_output_dto = api.model(
+    "SchemaScopeOutput",
+    {
+        "id": fields.Integer(),
+        "type": fields.String(),
+        "description": fields.String(),
+        "schema_id": fields.Integer(),
+        "color": fields.String(),
+    },
+)
+
+scope_output_dto = api.model(
+    "ScopeOutput",
+    {
+        "id": fields.Integer(),
+        "schema_scope": fields.Nested(schema_scope_output_dto),
+        "document_edit_id": fields.Integer(),
+        "document_recommendation_id": fields.Integer(),
+        "token_start": fields.Nested(token_model),
+        "token_end": fields.Nested(token_model),
+        "parent_scope_id": fields.Integer(),
+    },
+)
+scope_output_dto["children"] = fields.List(fields.Nested(scope_output_dto))

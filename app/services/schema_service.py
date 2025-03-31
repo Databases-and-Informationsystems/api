@@ -6,13 +6,16 @@ from werkzeug.exceptions import BadRequest, Conflict
 
 from app.models import Schema, SchemaMention, SchemaRelation, SchemaConstraint
 from app.repositories.schema_repository import SchemaRepository
+from app.services.schema_scope_service import SchemaScopeService, schema_scope_service
 
 
 class SchemaService:
     __schema_repository: SchemaRepository
+    schema_scope_service: SchemaScopeService
 
-    def __init__(self, schema_repository):
+    def __init__(self, schema_repository, schema_scope_service):
         self.__schema_repository = schema_repository
+        self.schema_scope_service = schema_scope_service
 
     def get_schema_by_id(self, schema_id):
         """
@@ -369,6 +372,12 @@ class SchemaService:
         except KeyError as e:
             raise BadRequest("Constraint not allowed: " + str(e))
 
+        self.schema_scope_service.create_scope_schema(
+            schema_id,
+            schema.get("schema_scopes"),
+            schema.get("schema_scope_constraints"),
+        )
+
     def __has_duplicates(self, items, key):
         seen = set()
         for item in items:
@@ -540,4 +549,4 @@ class SchemaService:
         return models
 
 
-schema_service = SchemaService(SchemaRepository())
+schema_service = SchemaService(SchemaRepository(), schema_scope_service)

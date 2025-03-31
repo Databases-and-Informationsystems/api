@@ -149,5 +149,11 @@ class TokenService:
 
         return document_tokens_dict
 
+    def get_token_by_id(self, token_id):
+        token = self.__token_repository.get_token_by_id(token_id)
+        if not token:
+            raise BadRequest("Token not found")
+        return token
+
 
 token_service = TokenService(TokenRepository())

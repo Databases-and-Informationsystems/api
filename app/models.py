@@ -248,3 +248,87 @@ class DocumentEditModelSettings(db.Model):
     )
     key = db.Column(db.String(), unique=False, nullable=False)
     value = db.Column(db.String(), unique=False, nullable=False)
+
+
+class SchemaScope(db.Model):
+    __tablename__ = "SchemaScope"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    type = db.Column(db.String(), unique=False, nullable=False)
+    description = db.Column(db.String(), unique=False, nullable=False)
+    schema_id = db.Column(db.Integer, db.ForeignKey("Schema.id"), nullable=False)
+    color = db.Column(db.String(), unique=False, nullable=True)
+
+    def to_json(self):
+        return {
+            "id": self.id,
+            "type": self.type,
+            "description": self.description,
+            "schema_id": self.schema_id,
+            "color": self.color,
+        }
+
+
+class SchemaScopeConstraint(db.Model):
+    __tablename__ = "SchemaScopeConstraint"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    schema_scope_parent_id = db.Column(
+        db.Integer, db.ForeignKey("SchemaScope.id"), nullable=False
+    )
+    schema_scope_child_id = db.Column(
+        db.Integer, db.ForeignKey("SchemaScope.id"), nullable=False
+    )
+    schema_scope_parent = db.relationship(
+        "SchemaScope",
+        foreign_keys=[schema_scope_parent_id],
+        backref="constraints_as_parent",
+    )
+    schema_scope_child = db.relationship(
+        "SchemaScope",
+        foreign_keys=[schema_scope_child_id],
+        backref="constraints_as_child",
+    )
+
+
+class Scope(db.Model):
+    __tablename__ = "Scope"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    schema_scope_id = db.Column(
+        db.Integer, db.ForeignKey("SchemaScope.id"), nullable=False
+    )
+
+    document_edit_id = db.Column(
+        db.Integer, db.ForeignKey("DocumentEdit.id"), nullable=True
+    )
+    document_recommendation_id = db.Column(
+        db.Integer, db.ForeignKey("DocumentRecommendation.id"), nullable=True
+    )
+    token_start_id = db.Column(db.Integer, db.ForeignKey(Token.id), nullable=False)
+    token_end_id = db.Column(db.Integer, db.ForeignKey(Token.id), nullable=False)
+    parent_scope_id = db.Column(db.ForeignKey("Scope.id"), nullable=True)
+
+    parent_scope = db.relationship("Scope", remote_side=[id], backref="children")
+    schema_scope = db.relationship(
+        "SchemaScope", foreign_keys=[schema_scope_id], backref="schema_scopes"
+    )
+    token_start = db.relationship(
+        "Token",
+        foreign_keys=[token_start_id],
+        backref="token_start",
+    )
+    token_end = db.relationship(
+        "Token",
+        foreign_keys=[token_end_id],
+        backref="token_end",
+    )
+
+    def to_json(self):
+        return {
+            "id": self.id,
+            "schema_scope": self.schema_scope.to_json(),
+            "document_edit_id": self.document_edit_id,
+            "document_recommendation_id": self.document_recommendation_id,
+            "token_start": self.token_start,
+            "token_end": self.token_end,
+            "parent_scope_id": self.parent_scope_id,
+            "children": [child.to_json() for child in self.children],
+        }

@@ -7,7 +7,9 @@ from app.services.document_recommendation_service import (
 )
 from app.services.entity_service import EntityService, entity_service
 from app.services.f1_score_service import f1_score_service, F1ScoreService
+from app.services.schema_scope_service import schema_scope_service, SchemaScopeService
 from app.services.schema_service import SchemaService, schema_service
+from app.services.scope_service import ScopeService, scope_service
 from app.services.token_service import TokenService, token_service
 from app.services.mention_services import MentionService, mention_service
 from app.services.relation_services import RelationService, relation_service
@@ -22,6 +24,8 @@ class DocumentEditService:
     schema_service: SchemaService
     entity_service: EntityService
     f1_score_service: F1ScoreService
+    scope_service: ScopeService
+    schema_scope_service: SchemaScopeService
 
     def __init__(
         self,
@@ -33,6 +37,8 @@ class DocumentEditService:
         schema_service,
         entity_service,
         f1_score_service,
+        scope_service,
+        schema_scope_service,
     ):
         self.__document_edit_repository = document_edit_repository
         self.document_recommendation_service = document_recommendation_service
@@ -42,6 +48,8 @@ class DocumentEditService:
         self.schema_service = schema_service
         self.entity_service = entity_service
         self.f1_score_service = f1_score_service
+        self.scope_service = scope_service
+        self.schema_scope_service = schema_scope_service
 
     def create_document_edit(
         self,
@@ -138,18 +146,21 @@ class DocumentEditService:
         )
 
         # Create mention recommendations
-        if with_recommendations:
-            params = self.__get_recommendation_params(document_edit.id, 1)  # MENTIONS
-            mention_recommendations = (
-                self.document_recommendation_service.get_mention_recommendation(
-                    document_id, doc_edit.schema_id, doc_edit.content, params
-                )
-            )
+        # if with_recommendations:
+        #    params = self.__get_recommendation_params(document_edit.id, 1)  # MENTIONS
+        #    mention_recommendations = (
+        #        self.document_recommendation_service.get_mention_recommendation(
+        #            document_id, doc_edit.schema_id, doc_edit.content, params
+        #        )
+        #    )
 
-            # Store mention recommendations
-            self.mention_service.create_recommended_mention(
-                document_edit.id, document_recommendation.id, mention_recommendations
-            )
+        #    # Store mention recommendations
+        #    self.mention_service.create_recommended_mention(
+        #        document_edit.id, document_recommendation.id, mention_recommendations
+        #    )
+
+        # Create Root Scope
+        self.scope_service.create_root_scope(document_edit.id, document_id, schema.id)
 
         return {
             "id": document_edit.id,
@@ -715,4 +726,6 @@ document_edit_service = DocumentEditService(
     schema_service,
     entity_service,
     f1_score_service,
+    scope_service,
+    schema_scope_service,
 )

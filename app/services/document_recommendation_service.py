@@ -365,6 +365,58 @@ class DocumentRecommendationService:
         entity_recommendations = response.json()
         return entity_recommendations
 
+    def get_scope_recommendation(
+        self, schema_scopes, schema_scope_constraints, content, tokens, document_id=None
+    ):
+        url = current_app.config.get("SCOPE_URL") + "/scopes"
+        headers = {
+            "accept": "application/json",
+            "Content-Type": "application/json",
+        }
+
+        json_input = {
+            "document_id": str(document_id) if document_id else None,
+            "schema": {
+                "schema_scopes": schema_scopes,
+                "schema_scope_constraints": schema_scope_constraints,
+            },
+            "content": content,
+            "tokens": tokens,
+        }
+        response = requests.post(url, json=json_input, headers=headers)
+        if response.status_code != 200:
+            raise BadRequest("Failed to fetch scope recommendations: " + response.text)
+        scope_recommendations = response.json()
+
+        # check for duplicate and overlapping tokens
+        if not self.no_overlapping_or_duplicate_tokens(scope_recommendations):
+            raise BadRequest("Overlapping or duplicate scopes found")
+
+        schema_scope_dict = dict()
+        for schema_scope in schema_scopes:
+            schema_scope_dict[schema_scope["type"]] = schema_scope["id"]
+
+        token_index_dict = dict()
+        for token in tokens:
+            token_index_dict[token["document_index"]] = token["id"]
+
+        scopes = [
+            {
+                "schema_scope_id": schema_scope_dict[
+                    scope_recommendation["scope_type"]
+                ],
+                "token_start_id": token_index_dict[
+                    scope_recommendation["startTokenDocumentIndex"]
+                ],
+                "token_end_id": token_index_dict[
+                    scope_recommendation["endTokenDocumentIndex"]
+                ],
+                "parent_scope_id": None,
+            }
+            for scope_recommendation in scope_recommendations
+        ]
+        return scopes
+
 
 document_recommendation_service = DocumentRecommendationService(
     DocumentRecommendationRepository(),

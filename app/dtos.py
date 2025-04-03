@@ -162,7 +162,7 @@ document_create_dto = api.model(
 )
 
 document_list_create_dto = api.model(
-    "DocumentUpload",
+    "DocumentListUpload",
     {
         "file_name": fields.String(required=True, description="Name of the document"),
         "file_content": fields.String(

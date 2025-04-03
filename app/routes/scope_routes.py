@@ -49,3 +49,23 @@ class ScopeQueryResource(ScopeBaseRoute):
             data.get("parent_scope_id"),
         )
         return response.to_json()
+
+
+@ns.route("/recommendation/<int:document_edit_id>")
+@ns.doc(params={"document_edit_id": "A Document Edit ID"})
+@ns.response(403, "Authorization required")
+@ns.response(404, "Data not found")
+class ScopeRecommendationResource(ScopeBaseRoute):
+
+    @ns.marshal_with(scope_output_dto, as_list=True)
+    def post(self, document_edit_id):
+        """
+        Generate recommendations for scopes of a document edit
+        """
+        user_id = self.user_service.get_logged_in_user_id()
+        self.user_service.check_user_document_edit_accessible(user_id, document_edit_id)
+
+        scopes = self.service.get_scope_recommendations(
+            document_edit_id,
+        )
+        return [scope.to_json() for scope in scopes]

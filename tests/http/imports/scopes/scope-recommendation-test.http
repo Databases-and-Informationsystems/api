@@ -1,0 +1,24 @@
+#
+# Simple endpoint test for the pet import.
+# It is required to have the correct pet schema saved in the database
+# replace the project id with the one in the dabase, that contains the pet schema
+#
+
+### Log in
+
+POST http://localhost/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "password": "{{password}}"
+}
+
+> {% client.global.set("auth_token", response.body.token); %}
+
+
+### Create recommendations
+
+POST http://localhost/api/scopes/recommendation/2
+Authorization: Bearer {{auth_token}}
+Content-Type: application/json

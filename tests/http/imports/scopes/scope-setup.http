@@ -1,0 +1,190 @@
+#
+# Create new user, team, schema (with scopes) and project
+# Upload a list of documents and create an annotation for the first document in the list
+#
+
+### Create new User
+POST http://localhost/api/auth/signup
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "password": "{{password}}",
+  "username": "{{username}}"
+}
+
+### Log in as created User
+
+POST http://localhost/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "password": "{{password}}"
+}
+
+> {% client.global.set("auth_token", response.body.token); %}
+
+### Create Team
+
+POST http://localhost/api/teams
+Authorization: Bearer {{auth_token}}
+Content-Type: application/json
+
+{
+  "name": "ScopeTeam"
+}
+> {% client.global.set("team_id", response.body.id); %}
+
+### Create Schema
+
+POST http://localhost/api/schemas?
+    team_id={{team_id}}
+Authorization: Bearer {{auth_token}}
+Content-Type: application/json
+
+< ./scope-schema.json
+> {% client.global.set("schema_id", response.body.id); %}
+
+### Create Project
+
+POST http://localhost/api/projects
+Authorization: Bearer {{auth_token}}
+Content-Type: application/json
+
+{
+  "name": "ScopeProject",
+  "team_id": {{team_id}},
+  "schema_id": {{schema_id}}
+}
+> {% client.global.set("project_id", response.body.id); %}
+
+### Import Scope documents
+# @timeout 300
+POST http://localhost:5001/api/documents/list?
+    project_id={{project_id}}
+Authorization: Bearer {{auth_token}}
+Content-Type: application/json
+
+< ./clinical-documents.json
+> {% client.global.set("document_id", response.body[0].id); %}
+
+### Create annotation 1
+
+POST http://localhost/api/document_edits
+Authorization: Bearer {{auth_token}}
+Content-Type: application/json
+
+{
+  "document_id": 1
+}
+> {% client.global.set("document_edit_id_1", response.body.id); %}
+
+### Create annotation 2
+
+POST http://localhost/api/document_edits
+Authorization: Bearer {{auth_token}}
+Content-Type: application/json
+
+{
+  "document_id": 2
+}
+> {% client.global.set("document_edit_id_2", response.body.id); %}
+
+### Create annotation 3
+
+POST http://localhost/api/document_edits
+Authorization: Bearer {{auth_token}}
+Content-Type: application/json
+
+{
+  "document_id": 3
+}
+> {% client.global.set("document_edit_id_3", response.body.id); %}
+
+### Create annotation 4
+
+POST http://localhost/api/document_edits
+Authorization: Bearer {{auth_token}}
+Content-Type: application/json
+
+{
+  "document_id": 4
+}
+> {% client.global.set("document_edit_id_4", response.body.id); %}
+
+### Create annotation 5
+
+POST http://localhost/api/document_edits
+Authorization: Bearer {{auth_token}}
+Content-Type: application/json
+
+{
+  "document_id": 5
+}
+> {% client.global.set("document_edit_id_5", response.body.id); %}
+
+### Create scopes | document 2, irrelevant 1
+# Doc-Index 0-34
+POST http://localhost/api/scopes/2
+Authorization: Bearer {{auth_token}}
+Content-Type: application/json
+
+{
+  "schema_scope_id": 3,
+  "token_start_id": 965,
+  "token_end_id": 999
+}
+
+### Create scopes | document 2, relevant 2
+# Doc-Index 35-73
+
+POST http://localhost/api/scopes/2
+Authorization: Bearer {{auth_token}}
+Content-Type: application/json
+
+{
+  "schema_scope_id": 2,
+  "token_start_id": 1000,
+  "token_end_id": 1038
+}
+
+
+### Create scopes | document 2, irrelevant 3
+# Doc-Index 74-101
+
+POST http://localhost/api/scopes/2
+Authorization: Bearer {{auth_token}}
+Content-Type: application/json
+
+{
+  "schema_scope_id": 3,
+  "token_start_id": 1039,
+  "token_end_id": 1066
+}
+
+### Create scopes | document 2, relevant 4
+# Doc-Index 102-790
+
+POST http://localhost/api/scopes/2
+Authorization: Bearer {{auth_token}}
+Content-Type: application/json
+
+{
+  "schema_scope_id": 2,
+  "token_start_id": 1067,
+  "token_end_id": 1755
+}
+
+### Create scopes | document 2, irrelevant 5
+# Doc-Index 791-918 (end)
+
+POST http://localhost/api/scopes/2
+Authorization: Bearer {{auth_token}}
+Content-Type: application/json
+
+{
+  "schema_scope_id": 2,
+  "token_start_id": 1756,
+  "token_end_id": 1883
+}

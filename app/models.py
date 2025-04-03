@@ -154,6 +154,9 @@ class DocumentEdit(db.Model):
     mention_model_id = db.Column(db.Integer, db.ForeignKey("RecommendationModel.id"))
     entity_model_id = db.Column(db.Integer, db.ForeignKey("RecommendationModel.id"))
     relation_model_id = db.Column(db.Integer, db.ForeignKey("RecommendationModel.id"))
+    document = db.relationship(
+        "Document", foreign_keys=[document_id], backref="document_edits"
+    )
 
 
 class Token(db.Model):
@@ -164,6 +167,16 @@ class Token(db.Model):
     sentence_index = db.Column(db.Integer, nullable=False)
     pos_tag = db.Column(db.String(), nullable=True)
     document_id = db.Column(db.Integer, db.ForeignKey("Document.id"), nullable=False)
+
+    def to_json(self):
+        return {
+            "id": self.id,
+            "text": self.text,
+            "document_index": self.document_index,
+            "sentence_index": self.sentence_index,
+            "pos_tag": self.pos_tag,
+            "document_id": self.document_id,
+        }
 
 
 class Mention(db.Model):
@@ -288,6 +301,12 @@ class SchemaScopeConstraint(db.Model):
         backref="constraints_as_child",
     )
 
+    def to_json(self):
+        return {
+            "parent_type": self.schema_scope_parent.to_json(),
+            "child_type": self.schema_scope_child.to_json(),
+        }
+
 
 class Scope(db.Model):
     __tablename__ = "Scope"
@@ -327,8 +346,8 @@ class Scope(db.Model):
             "schema_scope": self.schema_scope.to_json(),
             "document_edit_id": self.document_edit_id,
             "document_recommendation_id": self.document_recommendation_id,
-            "token_start": self.token_start,
-            "token_end": self.token_end,
+            "token_start": self.token_start.to_json(),
+            "token_end": self.token_end.to_json(),
             "parent_scope_id": self.parent_scope_id,
             "children": [child.to_json() for child in self.children],
         }

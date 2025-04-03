@@ -77,7 +77,7 @@ class SchemaScopeService:
         )
         if schema_scopes is None:
             raise BadRequest("No Schema Scopes Found")
-        return schema_scopes
+        return [s.to_json() for s in schema_scopes]
 
     def get_schema_scope_constraints_by_schema_id(self, schema_id):
         schema_scope_constraints = (
@@ -87,7 +87,7 @@ class SchemaScopeService:
         )
         if schema_scope_constraints is None:
             raise BadRequest("No Schema Scope Constraints Found")
-        return schema_scope_constraints
+        return [s.to_json() for s in schema_scope_constraints]
 
     def get_schema_scope_by_id(self, schema_scope_id):
         return self.__schema_scope_repository.get_schema_scope_by_id(schema_scope_id)

@@ -8,6 +8,9 @@ class Config:
     db_port = os.getenv("DB_PORT", "5432")
     db_name = os.getenv("DB_NAME", "annotation_db")
 
+    SCOPE_URL = os.getenv(
+        "SCOPE_URL", "http://llm-scope-extraction:8888/scope-extractor"
+    )
     PIPELINE_URL = os.getenv("PIPELINE_URL", "http://annotation_pipeline:8080/pipeline")
     DIFFERENCE_CALC_URL = os.getenv(
         "DIFFERENCE_CALC_URL", "http://annotation_difference_calc:8443/difference-calc"

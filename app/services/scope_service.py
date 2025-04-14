@@ -154,7 +154,7 @@ class ScopeService:
             document_edit_id=document_edit_id,
         )
 
-    def get_scope_recommendations(self, document_edit_id):
+    def get_scope_recommendations(self, document_edit_id, model):
         schema = self.schema_service.get_schema_by_document_edit(document_edit_id)
         schema_scopes = self.schema_scope_service.get_schema_scopes_by_schema_id(
             schema.id
@@ -177,6 +177,7 @@ class ScopeService:
             document_edit.document.content,
             tokens,
             document_edit.document.id,
+            model,
         )
 
         scopes = []

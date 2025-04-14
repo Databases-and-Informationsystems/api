@@ -366,7 +366,13 @@ class DocumentRecommendationService:
         return entity_recommendations
 
     def get_scope_recommendation(
-        self, schema_scopes, schema_scope_constraints, content, tokens, document_id=None
+        self,
+        schema_scopes,
+        schema_scope_constraints,
+        content,
+        tokens,
+        document_id=None,
+        model=None,
     ):
         url = current_app.config.get("SCOPE_URL") + "/scopes"
         headers = {
@@ -383,7 +389,9 @@ class DocumentRecommendationService:
             "content": content,
             "tokens": tokens,
         }
-        response = requests.post(url, json=json_input, headers=headers)
+        response = requests.post(
+            url, json=json_input, headers=headers, params={"model": model}
+        )
         if response.status_code != 200:
             raise BadRequest("Failed to fetch scope recommendations: " + response.text)
         scope_recommendations = response.json()

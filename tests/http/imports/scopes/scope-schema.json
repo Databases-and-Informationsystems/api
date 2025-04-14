@@ -3,145 +3,155 @@
   "name": "Scope-Schema",
   "schema_mentions": [
     {
-      "tag": "Actor",
-      "description": "An individual, role, department, or system performing tasks in a process (e.g., Customer Support Agent, Inventory Management System). Usually contains a noun",
+      "tag": "Activity",
+      "description": "An Activity refers to any action performed by a patient or a healthcare professional, this includes tasks, procedures, surgeries, treatments, medication, or other types of interventions. Activities can also be events like start of the scan.",
       "entity_possible": true,
       "color": "#123456"
     },
     {
-      "tag": "Activity Data",
-      "description": "Information used or produced during a task, like inputs, outputs, or processed model (e.g., Payment Details for Process Payment).",
+      "tag": "ActivityParent",
+      "description": "A Parent Activity refers to broader category or subprocess in medical guidelines, typically found in section headings or bold. This entity encompasses a group of related subactivities, actions, or tasks and can be broken down into it's individual subactions. That's also what it differentiates from the normal Activity Entity, which targets specific individual actions. For example, under 'Surgical Procedures' (a Parent Activity), you may find Activities like 'anesthesia administration' or 'incision making'. Recognize these overarching process labels as Parent Activities, and clearly separate them from the more specific, individual tasks classified as Activity Entities.",
       "entity_possible": true,
       "color": "#ABC"
     },
     {
-      "tag": "Activity",
-      "description": "A specific, actionable step in a process (e.g., Verify Documents or Generate Invoice). Usually contains a verb",
+      "tag": "Observation",
+      "description": "An Observation refers to any piece of information or data that is noted or recorded about a patient's health status, this includes symptoms, diagnoses, test results risk factors like smoking or contextual information like the age or conditions of the patient.",
       "entity_possible": true,
       "color": "#12344567d"
     },
     {
-      "tag": "XOR Gateway",
-      "description": "A decision point where only one path is chosen based on conditions (e.g., If Payment Approved, Ship Item; Else, Notify Customer).",
-      "entity_possible": false,
+      "tag": "Input",
+      "description": "An Input Entity refers to any word or phrase that denotes a specific type of clinical measurement, score, or value. These include, but are not limited to, physiological measurements, lab test scores, and specific clinical indices. The difference to the guard is that it not represents specific numerical values or thresholds related but the category of the measurement or value for example Blood Pressure, Heart Rate, PEEP, Pmean or PaO2/FiO2.",
+      "entity_possible": true,
       "color": "#FF11CC"
     },
     {
-      "tag": "AND Gateway",
-      "description": "A process split where all paths run in parallel (e.g., Conduct Interview and Perform Background Check).",
-      "entity_possible": false
-    },
-    {
-      "tag": "Condition Specification",
-      "description": "Rules for decisions at gateways, defining which path to take (e.g., If Credit Score > 700, Approve Loan; Else, Manual Review).",
+      "tag": "Output",
+      "description": "An Output Entity refers to any word or phrase that denotes a specific type of clinical measurement, score, or value. These include, but are not limited to, physiological measurements, lab test scores, and specific clinical indices. The difference to the guard is that it not represents specific numerical values or thresholds related but the category of the measurement or value for example Blood Pressure, Heart Rate, PEEP, Pmean or PaO2/FiO2. ",
       "entity_possible": true
     },
     {
-      "tag": "Further Specification",
-      "description": "Other Specifications, that are not given in a Condition.",
-      "entity_possible": false
+      "tag": "Queue",
+      "description": "",
+      "entity_possible": true
+    },
+    {
+      "tag": "Specification",
+      "description": "A Specification entity refers to any information that further describes an activity, this includes the time, the location, the dosage, the quantity, the frequency, the duration, additional information or the type of the activity. Specifications are often linked with prepositions like for example at, to, in, into, on, for, with, within, while, as, according to, across, after, by, during, for, over, when, where.",
+      "entity_possible": true
+    },
+    {
+      "tag": "Guard",
+      "description": "A Guard refers to a specific type of information that sets conditions, limits, or thresholds in the clinical context. These entities often represent critical values or timeframes that impact clinical decisions, such as dosage limits, duration of treatment, or thresholds for test results. This can include measurements (like volume or concentration), timeframes (like durations or frequencies), or any other quantifiable condition that affects clinical decisions.",
+      "entity_possible": true
+    },
+    {
+      "tag": "PurposeOutcome",
+      "description": "A PurposeOutcome entity captures the underlying reason, goal, objective, or anticipated result of a clinical action, procedure, or recommendation. It addresses the \"why\" or the intended effect of a medical intervention or guideline. Examples would be: to reduce the risk of stroke or so that the patient can sleep better. The PurposeOutcome entity is often connected with prepositions like for, to, in order to, so that, to ensure, because maybe or because of.",
+      "entity_possible": true
+    },
+    {
+      "tag": "And",
+      "description": "An And entity connects two or more activities that are linked by the conjunction \"and.\" This entity indicates that all linked activities are required or occur in conjunction. Primarily used in scenarios where multiple steps or conditions are simultaneously necessary. For instance, in a treatment plan, if multiple treatment activities need to be executed together.",
+      "entity_possible": true
+    },
+    {
+      "tag": "Or",
+      "description": "An Or entity links two or more activities or options, using the conjunction \"or.\" It signifies that any one of the linked activities or observations may be chosen or is applicable, but not necessarily all. Useful in cases where multiple options are available, and the choice of one excludes the others. Often seen in treatment plans where alternative activities are viable.",
+      "entity_possible": true
+    },
+    {
+      "tag": "Xor",
+      "description": "An Xor (exclusive or) entity connects two or more mutually exclusive activities, actions, tasks or observations, using the concept of \"xor.\" It implies that only one of the linked activities can be chosen or applies, and selecting one excludes the others. Applied in situations where two or more options are available but are mutually exclusive. It's critical in scenarios where the selection of one option inherently rules out the others.",
+      "entity_possible": true
+    },
+    {
+      "tag": "ResponseEntity",
+      "description": "A Response entity captures the relationship between two activities or an observation and a activity. If the first activity is executed the second activity must be executed at some point in time. The Response entity can therefore be for example action A and requires action B, observation A: administer drug B.",
+      "entity_possible": true
+    },
+    {
+      "tag": "InclusionEntity",
+      "description": "A Inclusion entity captures the relationship between two activities or an observation and an activity where one is including the other. For example blood tests are not required unless observation A is true. The Inclusion entity can therefore be for example \"unless\" so \"blood tests are not required unless observation A is true\" or \"if\" so \"if observation A is true, then blood tests are required\".",
+      "entity_possible": true
+    },
+    {
+      "tag": "ConditionEntity",
+      "description": "A Condition entity captures the relationship between two activities or an observation and a activity which need to be executed in a specific order. So action B can only be executed after action A. But Action B does not have to be executed. Activity B could for instance be “Prescribe medicine”. For that to happen a medical examination has to take place, which could be activity A. The RelationCondition entity can therefore be for example \"in cases where\" so \"use infusion fluid only in cases where the patient is dehydrated\" or \"before\" so \"before prescribing medication, perform a medical examination\".",
+      "entity_possible": true
+    },
+    {
+      "tag": "ExclusionEntity",
+      "description": "A Exclusion entity captures the relationship between two activities or an observation and an activity where one is excluding the other. Examples for the Exclusion entity would be for example not routinely recommended, or should not be, if observation activity is not possible.",
+      "entity_possible": true
+    },
+    {
+      "tag": "Actor",
+      "description": "An Actor refers to any person or entity that is involved in an activity, this includes patients, doctors, nurses, or other healthcare professionals. Actors can perform activities or be the target of activities.",
+      "entity_possible": true
+    },
+    {
+      "tag": "ActivityData",
+      "description": "An ActivityData entity describes the object an activity acts on. This includes any data or object directly used by an activity, this includes devices, medications, objects. This could be for example an injection or a scan or insulin.",
+      "entity_possible": true
     }
   ],
   "schema_relations": [
   {
-      "tag": "actor performer",
-      "description": "TODO"
+      "tag": "ActorReceiverRelation",
+      "description": "The Activity relation captures the relationship between activity and actor entities. The ActivityActorReceiver relation describes the relation between an activity and an actor which is the receiver of the activity. Example of ActivityActorReceiverRelation: activity is 'administered' and 'patient' is actor in the sentence 'A small dosage was administered to the patient'"
     },
     {
-      "tag": "uses",
-      "description": "TODO"
+      "tag": "ActorPerformerRelation",
+      "description": "The ActivityActorPerformer Relation captures the relationship between activity and actor entities. The ActivityActorPerformer relation can be for example 'performed by' so 'the surgery was performed by the surgeon' or 'administered by' so 'the medication was administered by the nurse'. The Activity can either be performed by medical staff (doctors, nurses, etc. ) or by the patient himself."
     },
     {
-      "tag": "actor recipient",
-      "description": "TODO"
+      "tag": "ActivityDataRelation",
+      "description": "The ActivityActivityData relation captures the relationship between the entities Activity and the object which is used by the Activity the ActivityData entity."
     },
     {
-      "tag": "flow",
-      "description": "TODO"
+      "tag": "ActivityParentRelation",
+      "description": "The ActivityParent Relation captures the relationship between two activities where one activity is the parent of the other activity. Or the other Activity is a subactivity of the first activity. For example '# Setting Up for a Sterile Surgical Procedure #' is the parent of '### Preparation of the Surgical Environment ###'. So the Parent Activity is 'Setting Up' and the Subactivity is 'Preparation'."
     },
     {
-      "tag": "same gateway",
-      "description": "TODO"
+      "tag": "SpecificationRelation",
+      "description": "The ActivitySpecification Relation captures the relationship between the entities Activity and Specification which further describes the Activity. The ActivitySpecification relation can be for example 'the surgery was performed at the hospital' so we have a relation between the Activity 'performed' and the specification 'at the hospital'. The type of the ActivitySpecificationRelation depends on what the Specification entity describes."
     },
     {
-      "tag": "further specification",
-      "description": "TODO"
+      "tag": "GuardRelation",
+      "description": "The ActivityGuard Relation captures the relationship between an Activity, Observation, Input or Output and a Guard entity. So for example a Activity can be guarded by a Guard entity. The Guard entity can be for example '> 6h' so 'if the stroke happened already > 6 hours ago perform SOFA-Test'. The Guard entity would be '> 6h' and the Activity would be 'perform' and the type would be 'Larger'."
+    },
+    {
+      "tag": "PurposeOutcomeRelation",
+      "description": ""
+    },
+    {
+      "tag": "DirectConditionRelation",
+      "description": "A Condition Relation captures the relationship between two activities or an observation and a activity which need to be executed in a specific order. So action B can only be executed after action A. Activity B could for instance be “Prescribe medicine”. For that to happen a medical examination has to take place, which could be activity A. The Condition Relation could be for example 'use infusion fluid only in cases where the patient is dehydrated' so we would have a relation between the activity 'use' and the observation 'dehydration'. Or for example 'before prescribing medication, perform a medical examination' we would have the activity 'prescribe' and the activity 'examination' connected with a ConditionRelation."
+    },
+    {
+      "tag": "DirectResponseRelation",
+      "description": "A Response Relation captures the relationship between two activities or an observation and an activity. This relation applies if after executing the first activity the second activity must be executed. The Response Relation could be for example 'if the patient is dehydrated, use infusion fluid' so we would have a relation between the observation 'dehydration' and the activity 'use'."
+    },
+    {
+      "tag": "DirectConditionResponseRelation",
+      "description": "A ConditionResponse Relation captures the relationship between two activities or an observation and an activity and applies if as Response Relation is combined with a Condition Relation. This relation applies if after executing the first activity the second activity must be executed and it is only allowed to happen after activity A. In the following example sentence 'Following the collection of blood cultures, administer broad-spectrum intravenous antibiotics within one hour of recognition of sepsis.'\n        # we would have a ConditionResponse Relation between the activity 'collection' and the activity 'administer'."
+    },
+    {
+      "tag": "IndirectConnectRelation",
+      "description": "The ConnectRelation connects two Observations, Activities, Input, Output with AND, OR, XOR."
+    },
+    {
+      "tag": "IndirectFromRelation",
+      "description": ""
+    },
+    {
+      "tag": "IndirectToRelation",
+      "description": ""
     }
   ],
-  "schema_constraints": [
-    {
-      "is_directed": true,
-      "relation_tag": "uses",
-      "mention_head_tag": "Activity",
-      "mention_tail_tag": "Activity Data"
-    },
-    {
-      "is_directed": false,
-      "relation_tag": "flow",
-      "mention_head_tag": "Activity",
-      "mention_tail_tag": "XOR Gateway"
-    },
-    {
-      "is_directed": false,
-      "relation_tag": "flow",
-      "mention_head_tag": "Activity",
-      "mention_tail_tag": "Activity"
-    },
-    {
-      "is_directed": false,
-      "relation_tag": "flow",
-      "mention_head_tag": "Activity",
-      "mention_tail_tag": "AND Gateway"
-    },
-    {
-      "is_directed": true,
-      "relation_tag": "actor performer",
-      "mention_head_tag": "Activity",
-      "mention_tail_tag": "Actor"
-    },
-    {
-      "is_directed": false,
-      "relation_tag": "flow",
-      "mention_head_tag": "XOR Gateway",
-      "mention_tail_tag": "Condition Specification"
-    },
-    {
-      "is_directed": true,
-      "relation_tag": "actor recipient",
-      "mention_head_tag": "Activity",
-      "mention_tail_tag": "Actor"
-    },
-    {
-      "is_directed": false,
-      "relation_tag": "same gateway",
-      "mention_head_tag": "XOR Gateway",
-      "mention_tail_tag": "XOR Gateway"
-    },
-    {
-      "is_directed": true,
-      "relation_tag": "flow",
-      "mention_head_tag": "Condition Specification",
-      "mention_tail_tag": "Activity"
-    },
-    {
-      "is_directed": true,
-      "relation_tag": "flow",
-      "mention_head_tag": "Condition Specification",
-      "mention_tail_tag": "AND Gateway"
-    },
-    {
-      "is_directed": true,
-      "relation_tag": "further specification",
-      "mention_head_tag": "Activity",
-      "mention_tail_tag": "Further Specification"
-    },
-    {
-      "is_directed": false,
-      "relation_tag": "flow",
-      "mention_head_tag": "XOR Gateway",
-      "mention_tail_tag": "XOR Gateway"
-    }
-  ],
+  "schema_constraints": [],
   "schema_scopes": [
     {
       "type": "relevant",

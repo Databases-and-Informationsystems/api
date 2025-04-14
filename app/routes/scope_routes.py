@@ -58,6 +58,15 @@ class ScopeQueryResource(ScopeBaseRoute):
 class ScopeRecommendationResource(ScopeBaseRoute):
 
     @ns.marshal_with(scope_output_dto, as_list=True)
+    @ns.doc(
+        params={
+            "model": {
+                "description": "Recommendation Model that should be used.",
+                "required": False,
+            },
+        },
+        description="Executes the mention detection step.",
+    )
     def post(self, document_edit_id):
         """
         Generate recommendations for scopes of a document edit
@@ -65,7 +74,6 @@ class ScopeRecommendationResource(ScopeBaseRoute):
         user_id = self.user_service.get_logged_in_user_id()
         self.user_service.check_user_document_edit_accessible(user_id, document_edit_id)
 
-        scopes = self.service.get_scope_recommendations(
-            document_edit_id,
-        )
+        model = request.args.get("model")
+        scopes = self.service.get_scope_recommendations(document_edit_id, model)
         return [scope.to_json() for scope in scopes]

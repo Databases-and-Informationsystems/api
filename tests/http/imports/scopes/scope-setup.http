@@ -188,3 +188,13 @@ Content-Type: application/json
   "token_start_id": 1756,
   "token_end_id": 1883
 }
+
+### Import PET documents
+
+POST http://localhost/api/imports/documents?
+    source=pet&
+    project_id={{project_id}}
+Authorization: Bearer {{auth_token}}
+Content-Type: application/json
+
+< ./clinical-documents-annotated.json

@@ -361,21 +361,30 @@ class SchemaService:
             )
             schema_relations_by_tag[schema_relation["tag"]] = created_relation
 
-        try:
-            for constraint in schema["schema_constraints"]:
-                self.__create_schema_constraint(
-                    schema_relations_by_tag[constraint.get("relation_tag")].id,
-                    schema_mentions_by_tag[constraint.get("mention_head_tag")].id,
-                    schema_mentions_by_tag[constraint.get("mention_tail_tag")].id,
-                    constraint.get("is_directed"),
-                )
-        except KeyError as e:
-            raise BadRequest("Constraint not allowed: " + str(e))
+        if len(schema["schema_constraints"]) == 0:
+            self.__create_unrestricted_constraints(
+                schema_relations_by_tag, schema_mentions_by_tag
+            )
+        else:
+            try:
+                for constraint in schema["schema_constraints"]:
+                    self.__create_schema_constraint(
+                        schema_relations_by_tag[constraint.get("relation_tag")].id,
+                        schema_mentions_by_tag[constraint.get("mention_head_tag")].id,
+                        schema_mentions_by_tag[constraint.get("mention_tail_tag")].id,
+                        constraint.get("is_directed"),
+                    )
+            except KeyError as e:
+                raise BadRequest("Constraint not allowed: " + str(e))
 
         self.schema_scope_service.create_scope_schema(
             schema_id,
-            schema.get("schema_scopes"),
-            schema.get("schema_scope_constraints"),
+            schema.get("schema_scopes") if schema.get("schema_scopes") else [],
+            (
+                schema.get("schema_scope_constraints")
+                if schema.get("schema_scope_constraints")
+                else []
+            ),
         )
 
     def __has_duplicates(self, items, key):
@@ -547,6 +556,19 @@ class SchemaService:
             model.model_step_name = step
             models.append(model)
         return models
+
+    def __create_unrestricted_constraints(
+        self, schema_relations_by_tag, schema_mentions_by_tag
+    ):
+        for relation in schema_relations_by_tag.values():
+            for mention_head in schema_mentions_by_tag.values():
+                for mention_tail in schema_mentions_by_tag.values():
+                    self.__create_schema_constraint(
+                        relation.id,
+                        mention_head.id,
+                        mention_tail.id,
+                        True,
+                    )
 
 
 schema_service = SchemaService(SchemaRepository(), schema_scope_service)

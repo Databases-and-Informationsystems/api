@@ -300,11 +300,13 @@ class SchemaScopeConstraint(db.Model):
         foreign_keys=[schema_scope_child_id],
         backref="constraints_as_child",
     )
+    merge_consecutive_children = db.Column(db.Boolean, default=False)
 
     def to_json(self):
         return {
             "parent_type": self.schema_scope_parent.to_json(),
             "child_type": self.schema_scope_child.to_json(),
+            "merge_consecutive_children": self.merge_consecutive_children,
         }
 
 

@@ -154,63 +154,37 @@
   "schema_constraints": [],
   "schema_scopes": [
     {
-      "type": "relevant",
-      "description": "",
-      "allowed_on_toplevel": true
+      "type": "related information",
+      "description": "All sentences that contain data or information directly related to the activities of the process without defining an activity by itself. Therefore, this scope never includes an action. For example, this scope can include dosages of medications, roles and responsibilities or headlines above relevant scopes that group and name the subsequent activities."
     },
     {
       "type": "not relevant",
-      "description": "",
-      "allowed_on_toplevel": true
+      "description": "Information not directly needed for execution of the described activities. Not relevant are sentences that describe the purpose, goal and target groups of the procedure. Also irrelevant are terminology, definitions, background information, indications, contraindications, headlines above not relevant scopes and general explanations."
     },
-    {
-      "type": "sequential",
-      "description": "",
-      "allowed_on_toplevel": false
-    },
+
     {
       "type": "conflicting",
-      "description": "",
-      "allowed_on_toplevel": false
+      "description": "Inside a conflicting scope, exactly one of its child scopes is executed. Therefore, a conflicting scope must always have child scopes. Example: 'Do A or B', 'If A then C. If B then D.', 'For A do C, For B do D.'"
     },
     {
       "type": "inclusive",
-      "description": "",
-      "allowed_on_toplevel": false
+      "description": "Inside an inclusive scope, at least one its child scopes is executed. Therefore, a inclusive scope must always have child scopes. Example: 'Do A and/or B.'"
     },
     {
       "type": "concurrent",
-      "description": "",
-      "allowed_on_toplevel": false
+      "description": "Inside a concurrent scope, its child-scopes can be executed in arbitrary order. Therefore, a concurrent scope must always have child scopes. Use this scope, if the child-scopes can be executed independently from each other in arbitrary order."
     },
     {
       "type": "iterating",
-      "description": "",
-      "allowed_on_toplevel": false
+      "description": "Inside an iterating scope, its inner scope can be executed multiple times. Therefore, a concurrent scope must always have exactly one child scope. Example: 'Activity A must be repeated every 2 hours/in case of Condition C.'"
+    },
+        {
+      "type": "sequential",
+      "description": "Activities and child-scopes inside a sequential scope are executed in the order they appear in the scope. A sequential scope can have child scopes, but this is not mandatory. At the leaf level of each executable subtree, there has to be a sequential scope."
     }
   ],
   "schema_scope_constraints": [
     {
-      "parent_type": "relevant",
-      "child_type": "sequential"
-    },
-    {
-      "parent_type": "relevant",
-      "child_type": "conflicting"
-    },
-    {
-      "parent_type": "relevant",
-      "child_type": "inclusive"
-    },
-    {
-      "parent_type": "relevant",
-      "child_type": "concurrent"
-    },
-    {
-      "parent_type": "relevant",
-      "child_type": "iterating"
-    },
-    {
       "parent_type": "sequential",
       "child_type": "conflicting"
     },
@@ -228,7 +202,8 @@
     },
     {
       "parent_type": "sequential",
-      "child_type": "sequential"
+      "child_type": "sequential",
+      "merge_consecutive_children": true
     },
     {
       "parent_type": "conflicting",
@@ -288,9 +263,11 @@
     {
       "parent_type": "concurrent",
       "child_type": "iterating"
-    },    {
+    },
+    {
       "parent_type": "iterating",
-      "child_type": "sequential"
+      "child_type": "sequential",
+      "merge_consecutive_children": true
     },
     {
       "parent_type": "iterating",
@@ -307,6 +284,73 @@
     {
       "parent_type": "iterating",
       "child_type": "iterating"
+    },
+    {
+      "parent_type": "iterating",
+      "child_type": "not relevant",
+      "merge_consecutive_children": true
+    },
+    {
+      "parent_type": "iterating",
+      "child_type": "related information",
+      "merge_consecutive_children": true
+    },
+    {
+      "parent_type": "conflicting",
+      "child_type": "not relevant",
+      "merge_consecutive_children": true
+    },
+    {
+      "parent_type": "conflicting",
+      "child_type": "related information",
+      "merge_consecutive_children": true
+    },
+    {
+      "parent_type": "inclusive",
+      "child_type": "not relevant",
+      "merge_consecutive_children": true
+    },
+    {
+      "parent_type": "inclusive",
+      "child_type": "related information",
+      "merge_consecutive_children": true
+    },
+    {
+      "parent_type": "concurrent",
+      "child_type": "not relevant",
+      "merge_consecutive_children": true
+    },
+    {
+      "parent_type": "concurrent",
+      "child_type": "related information",
+      "merge_consecutive_children": true
+    },
+    {
+      "parent_type": "sequential",
+      "child_type": "not relevant",
+      "merge_consecutive_children": true
+    },
+    {
+      "parent_type": "sequential",
+      "child_type": "related information",
+      "merge_consecutive_children": true
+    },
+    {
+            "parent_type": "root",
+      "child_type": "sequential",
+      "merge_consecutive_children": true
+    }
+    ,
+    {
+            "parent_type": "root",
+      "child_type": "related information",
+      "merge_consecutive_children": true
+    }
+    ,
+    {
+            "parent_type": "root",
+      "child_type": "not relevant",
+      "merge_consecutive_children": true
     }
   ]
 }

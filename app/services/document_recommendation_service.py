@@ -395,35 +395,7 @@ class DocumentRecommendationService:
         if response.status_code != 200:
             raise BadRequest("Failed to fetch scope recommendations: " + response.text)
         scope_recommendations = response.json()
-
-        # check for duplicate and overlapping tokens
-        if not self.no_overlapping_or_duplicate_tokens(scope_recommendations):
-            raise BadRequest("Overlapping or duplicate scopes found")
-
-        schema_scope_dict = dict()
-        for schema_scope in schema_scopes:
-            schema_scope_dict[schema_scope["type"]] = schema_scope["id"]
-
-        token_index_dict = dict()
-        for token in tokens:
-            token_index_dict[token["document_index"]] = token["id"]
-
-        scopes = [
-            {
-                "schema_scope_id": schema_scope_dict[
-                    scope_recommendation["scope_type"]
-                ],
-                "token_start_id": token_index_dict[
-                    scope_recommendation["startTokenDocumentIndex"]
-                ],
-                "token_end_id": token_index_dict[
-                    scope_recommendation["endTokenDocumentIndex"]
-                ],
-                "parent_scope_id": None,
-            }
-            for scope_recommendation in scope_recommendations
-        ]
-        return scopes
+        return scope_recommendations
 
 
 document_recommendation_service = DocumentRecommendationService(

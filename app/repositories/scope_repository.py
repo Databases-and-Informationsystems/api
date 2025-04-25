@@ -20,7 +20,9 @@ class ScopeRepository(BaseRepository):
             document_edit_id=document_edit_id,
             document_recommendation_id=document_recommendation_id,
         )
-        return self.store_object(scope)
+        scope = self.store_object(scope)
+        self.get_session().refresh(self.get_object_by_id(Scope, parent_scope_id))
+        return scope
 
     def delete_scope(self, scope_id):
         scope = self.get_session().query(Scope).filter_by(id=scope_id).first()

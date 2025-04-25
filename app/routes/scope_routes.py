@@ -64,6 +64,11 @@ class ScopeRecommendationResource(ScopeBaseRoute):
                 "description": "Recommendation Model that should be used.",
                 "required": False,
             },
+            "step": {
+                "description": "Which step of scope recommendation should take place (default: all).",
+                "required": False,
+                "enum": ["top-level", "subtrees", "all"],
+            },
         },
         description="Executes the mention detection step.",
     )
@@ -75,5 +80,5 @@ class ScopeRecommendationResource(ScopeBaseRoute):
         self.user_service.check_user_document_edit_accessible(user_id, document_edit_id)
 
         model = request.args.get("model")
-        scopes = self.service.get_scope_recommendations(document_edit_id, model)
-        return [scope.to_json() for scope in scopes]
+        step = request.args.get("step")
+        return self.service.get_scope_recommendations(document_edit_id, model, step)

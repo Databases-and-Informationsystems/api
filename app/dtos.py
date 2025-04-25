@@ -262,7 +262,6 @@ schema_scope_input_dto = api.model(
         "type": fields.String(required=True),
         "description": fields.String(required=True),
         "color": fields.String(required=False, example="#12AB3C"),
-        "allowed_on_toplevel": fields.Boolean(required=True),
     },
 )
 
@@ -271,6 +270,7 @@ schema_scope_constraints_input_dto = api.model(
     {
         "parent_type": fields.String(required=True),
         "child_type": fields.String(required=True),
+        "merge_consecutive_children": fields.Boolean(default=False),
     },
 )
 

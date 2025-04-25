@@ -16,9 +16,34 @@ Content-Type: application/json
 
 > {% client.global.set("auth_token", response.body.token); %}
 
+### Import Scope documents
+# @timeout 300
+POST http://localhost:5001/api/documents
+Authorization: Bearer {{auth_token}}
+Content-Type: application/json
+
+    {
+      "project_id": 1,
+ "file_name": "047c032c-ea66-4b52-8e89-c4b3457a6384",
+        "file_content": "#  Treatment of subcutaneous abscesses\n\n##  Target groups and area of application\n\n##  Definitions\n\n##  Procedure\n\nSubcutaneous abscesses can basically be treated in the following two ways:\n\n1. conventional treatment\n2. primary suturing under antibiotic coverage\n\n**Conventional treatment**\n\nThe skin flap is removed from the abscess, the septae are broken down and the abscess contents are drained. A\nhemostatic mech is placed in the cavity. Change after approx. 24 hours +\/-.\nanesthesia by individual assessment.\n\n*Advantages:* Can be used to treat all abscesses, no use of antibiotics.\nantibiotics.\n\n*Disadvantages:* Long hospitalization and many changes - possibly several under general anesthesia.\nanesthesia.\n\n**Primary suturing under antibiotic coverage**\n\nIncision over the apex of the abscess, the abscess contents are drained and the septae\ndigitally decompose the septae. Then curettage with a sharp spoon. The cavity is irrigated,\nclose with penetrating prolene (1-0 or 2-0) on a large needle.\nThe suture is placed as shown in the figure below. Give antibiotics according to instructions.\ninstructions.\n\n*Advantages:* Fast healing, short hospitalization and no changes.\n\n*Disadvantages:* Cannot be used to treat all abscesses, use of antibiotics, re\nantibiotics, reabscessing.\n\nDo *not* culture from abscesses, except for suspected\nair-generating infections (see instructions for necrotizing\nsoft tissue infections).\n\n**Guidelines for the treatment of abscesses**\n\nMost abscesses can be treated with primary sutures under antibiotic coverage.\nExceptions are:\n\n1. Large irregular abscesses with significant substance loss or pocket formation.\n2. The location of the abscess makes suturing impossible.\n\nIn these cases, conventional treatment is used.\n\n##  Responsibility and organization\n\n##  References, legislation and professional evidence and links to them\n\n##  Accreditation standards\n\n##  Appendices"
+
+    }
+> {% client.global.set("document_id", response.body.id); %}
+
+### Create annotation 1
+
+POST http://localhost/api/document_edits
+Authorization: Bearer {{auth_token}}
+Content-Type: application/json
+
+{
+  "document_id": {{document_id}}
+}
+> {% client.global.set("document_edit_id_1", response.body.id); %}
 
 ### Create recommendations
-
-POST http://localhost/api/scopes/recommendation/2
+# gemini-2.5-pro-exp-03-25
+# gemini-2.5-flash
+POST http://localhost/api/scopes/recommendation/{{document_edit_id_1}}?model=gemini-2.5-pro-exp-03-25&step=top-level
 Authorization: Bearer {{auth_token}}
 Content-Type: application/json

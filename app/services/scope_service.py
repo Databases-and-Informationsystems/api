@@ -1,4 +1,5 @@
 import logging
+from collections import defaultdict
 
 from werkzeug.exceptions import BadRequest
 
@@ -154,7 +155,7 @@ class ScopeService:
             document_edit_id=document_edit_id,
         )
 
-    def get_scope_recommendations(self, document_edit_id, model):
+    def get_scope_recommendations(self, document_edit_id, model, step):
         schema = self.schema_service.get_schema_by_document_edit(document_edit_id)
         schema_scopes = self.schema_scope_service.get_schema_scopes_by_schema_id(
             schema.id
@@ -171,6 +172,55 @@ class ScopeService:
         tokens = self.token_service.get_tokens_by_document(document_edit.document.id)[
             "tokens"
         ]
+
+        if step == "top-level":
+            schema_scopes = [
+                schema_scope_constraint["child_type"]
+                for schema_scope_constraint in schema_scope_constraints
+                if schema_scope_constraint["parent_type"]["type"] == "root"
+            ]
+
+        elif step == "subtrees":
+            toplevel_schema_scopes = [
+                schema_scope_constraint["child_type"]
+                for schema_scope_constraint in schema_scope_constraints
+                if schema_scope_constraint["parent_type"]["type"] == "root"
+            ]
+            schema_scopes = [
+                schema_scope
+                for schema_scope in schema_scopes
+                if any(
+                    schema_scope_constraint["parent_type"]["type"] != "root"
+                    and schema_scope_constraint["child_type"]["type"]
+                    == schema_scope["type"]
+                    for schema_scope_constraint in schema_scope_constraints
+                )
+            ]
+            tree = self.get_scope_tree_by_document_edit_id(document_edit.id)
+
+            relevant_schema_scopes = [
+                tss["type"]
+                for tss in toplevel_schema_scopes
+                if any(
+                    schema_scope_constraint["parent_type"]["type"] == tss["type"]
+                    for schema_scope_constraint in schema_scope_constraints
+                )
+            ]
+
+            relevant_token_list = []
+
+            if tree["children"]:
+                for child in tree["children"]:
+                    if child["schema_scope"]["type"] in relevant_schema_scopes:
+                        relevant_token_list.extend(
+                            tokens[
+                                child["token_start"]["document_index"] : child[
+                                    "token_end"
+                                ]["document_index"]
+                            ]
+                        )
+            tokens = relevant_token_list
+
         recommendations = self.document_recommendation_service.get_scope_recommendation(
             schema_scopes,
             schema_scope_constraints,
@@ -180,21 +230,145 @@ class ScopeService:
             model,
         )
 
+        postprocessed_recommendations = self.__postprocess_scope_tree(
+            recommendations, tokens, schema_scopes, schema_scope_constraints
+        )
         scopes = []
-        for recommendation in recommendations:
+        scope_id_mapping = {}
+        root = self.get_scope_tree_by_document_edit_id(document_edit_id)
+        scope_id_mapping[None] = root["id"]
+        for recommendation in postprocessed_recommendations:
             try:
-                scopes.append(
-                    self.create_scope(
+                if recommendation["schema_scope_id"] == root["schema_scope"]["id"]:
+                    scope_id_mapping[recommendation["id"]] = root["id"]
+                else:
+                    new_scope = self.create_scope(
                         recommendation["schema_scope_id"],
                         recommendation["token_start_id"],
                         recommendation["token_end_id"],
                         document_edit_id,
-                        recommendation.get("parent_scope_id"),
+                        scope_id_mapping[recommendation.get("parent_scope_id")],
                     )
+                    scopes.append(new_scope)
+                    scope_id_mapping[recommendation["id"]] = new_scope.id
+            except Exception as e:
+                logging.info(
+                    "Failed to create scope: " + str(recommendation) + ", " + str(e)
                 )
-            except:
-                logging.info("Failed to create scope: " + str(recommendation))
-        return scopes
+        return self.get_scope_tree_by_document_edit_id(document_edit_id)
+
+    def __postprocess_scope_tree(
+        self, scope_recommendations, tokens, schema_scopes, schema_scope_constraints
+    ):
+        merged_scopes = []
+        schema_scope_dict = dict()
+        for schema_scope in schema_scopes:
+            schema_scope_dict[schema_scope["type"]] = schema_scope["id"]
+
+        token_index_dict = dict()
+        for token in tokens:
+            token_index_dict[token["document_index"]] = token["id"]
+
+        merging_allowed = dict()
+        for schema_scope_constraint in schema_scope_constraints:
+            merging_allowed[
+                (
+                    schema_scope_constraint["parent_type"]["type"],
+                    schema_scope_constraint["child_type"]["type"],
+                )
+            ] = schema_scope_constraint["merge_consecutive_children"]
+        merged_scope_id_mapping = dict()
+        parent_children_dict = defaultdict(list)
+        parent_type_dict = {None: "root"}
+
+        for scope_recommendation in scope_recommendations:  # Group by parent id
+            parent_children_dict[scope_recommendation["parent_scope_id"]].append(
+                scope_recommendation
+            )
+            parent_type_dict[scope_recommendation["id"]] = scope_recommendation[
+                "scope_type"
+            ]
+
+        for key in parent_children_dict:
+            parent_children_dict[key] = sorted(
+                parent_children_dict[key],
+                key=lambda x: x["startTokenDocumentIndex"],
+            )
+            merged = parent_children_dict[key][0]
+            merged_scope_id_mapping[merged["id"]] = merged["id"]
+
+            if len(parent_children_dict[key]) == 1:
+                merged_scopes.append(merged)
+            else:
+                for scope in parent_children_dict[key][1:]:
+                    if (
+                        merging_allowed.get(
+                            (parent_type_dict.get(key), scope["scope_type"])
+                        )
+                        and scope["scope_type"] == merged["scope_type"]
+                        and scope["startTokenDocumentIndex"]
+                        == merged["endTokenDocumentIndex"] + 1
+                    ):
+                        merged_scope_id_mapping[scope["id"]] = merged["id"]
+                        merged = {
+                            "id": merged["id"],
+                            "scope_type": merged["scope_type"],
+                            "startTokenDocumentIndex": merged[
+                                "startTokenDocumentIndex"
+                            ],
+                            "endTokenDocumentIndex": scope["endTokenDocumentIndex"],
+                            "parent_scope_id": merged["parent_scope_id"],
+                        }
+                    else:
+                        merged_scopes.append(merged)
+                        merged = scope
+                        merged_scope_id_mapping[merged["id"]] = merged["id"]
+
+                merged_scopes.append(merged)
+        for merged_scope in merged_scopes:
+            merged_scope["id"] = merged_scope_id_mapping[merged_scope["id"]]
+            merged_scope["parent_scope_id"] = merged_scope_id_mapping.get(
+                merged_scope["parent_scope_id"]
+            )
+            merged_scope["schema_scope_id"] = schema_scope_dict[
+                merged_scope["scope_type"]
+            ]
+            merged_scope["token_start_id"] = token_index_dict[
+                merged_scope["startTokenDocumentIndex"]
+            ]
+            merged_scope["token_end_id"] = token_index_dict[
+                merged_scope["endTokenDocumentIndex"]
+            ]
+
+        merged_scopes = self.__merge_equal_scopes(merged_scopes)
+        logging.info(merged_scopes)
+        return sorted(merged_scopes, key=lambda x: x["id"])
+
+    def __merge_equal_scopes(self, merged_scopes):
+        scope_id_dict = dict()
+        parent_children_dict = defaultdict(list)
+        for merged_scope in merged_scopes:
+            parent_children_dict[merged_scope["parent_scope_id"]].append(merged_scope)
+            scope_id_dict[merged_scope["id"]] = merged_scope
+
+        # Merge child with parent if type and bounds are equal
+        for key in parent_children_dict:
+            if len(parent_children_dict[key]) != 1 or key is None:
+                continue
+            scope = parent_children_dict[key][0]
+            if scope_id_dict[key]["scope_type"] != scope["scope_type"]:
+                continue
+
+            if (
+                scope_id_dict[key]["startTokenDocumentIndex"]
+                == scope["startTokenDocumentIndex"]
+                and scope_id_dict[key]["endTokenDocumentIndex"]
+                == scope["endTokenDocumentIndex"]
+            ):
+                for child_scope in parent_children_dict[scope["id"]]:
+                    child_scope["parent_scope_id"] = scope["parent_scope_id"]
+                merged_scopes = [s for s in merged_scopes if s["id"] != scope["id"]]
+        return merged_scopes
 
 
 scope_service = ScopeService(

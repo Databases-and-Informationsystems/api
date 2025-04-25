@@ -18,9 +18,15 @@ class SchemaScopeRepository(BaseRepository):
         super().store_object(schema_scope)
         return schema_scope
 
-    def create_schema_scope_constraint(self, parent_id, child_id):
+    def create_schema_scope_constraint(
+        self, parent_id, child_id, merge_consecutive_children
+    ):
+        if merge_consecutive_children is None:
+            merge_consecutive_children = False
         constraint = SchemaScopeConstraint(
-            schema_scope_parent_id=parent_id, schema_scope_child_id=child_id
+            schema_scope_parent_id=parent_id,
+            schema_scope_child_id=child_id,
+            merge_consecutive_children=merge_consecutive_children,
         )
         super().store_object(constraint)
         return constraint
@@ -30,6 +36,7 @@ class SchemaScopeRepository(BaseRepository):
             self.get_session()
             .query(SchemaScope)
             .filter(SchemaScope.schema_id == schema_id)
+            .order_by(SchemaScope.id.asc())
             .all()
         )
 

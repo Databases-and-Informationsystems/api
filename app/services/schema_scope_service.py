@@ -23,7 +23,7 @@ class SchemaScopeService:
             raise Conflict("Duplicate scope constraints found in schema.")
 
         root = self.__create_schema_scope(schema_id, "root", "Root")
-        schema_scopes_by_type = {}
+        schema_scopes_by_type = {"root": root}
         for schema_scope in schema_scopes:
             if schema_scope.get("type") == "root":
                 raise BadRequest("Type root not allowed")
@@ -33,14 +33,13 @@ class SchemaScopeService:
                 schema_scope.get("description"),
                 schema_scope.get("color"),
             )
-            if schema_scope.get("allowed_on_toplevel"):
-                self.__create_schema_scope_constraint(root.id, created_scope.id)
             schema_scopes_by_type[schema_scope["type"]] = created_scope
 
         for schema_scope_constraint in schema_scope_constraints:
             self.__create_schema_scope_constraint(
                 schema_scopes_by_type[schema_scope_constraint.get("parent_type")].id,
                 schema_scopes_by_type[schema_scope_constraint.get("child_type")].id,
+                schema_scope_constraint.get("merge_consecutive_children"),
             )
 
     def __has_duplicates(self, items, key):
@@ -66,9 +65,13 @@ class SchemaScopeService:
         """
         return "#{:06x}".format(random.randint(0, 0xFFFFFF))
 
-    def __create_schema_scope_constraint(self, parent_scope_id, child_scope_id):
+    def __create_schema_scope_constraint(
+        self, parent_scope_id, child_scope_id, merge_consecutive_children
+    ):
         return self.__schema_scope_repository.create_schema_scope_constraint(
-            parent_id=parent_scope_id, child_id=child_scope_id
+            parent_id=parent_scope_id,
+            child_id=child_scope_id,
+            merge_consecutive_children=merge_consecutive_children,
         )
 
     def get_schema_scopes_by_schema_id(self, schema_id):

@@ -348,8 +348,28 @@
     }
     ,
     {
-            "parent_type": "root",
+      "parent_type": "root",
       "child_type": "not relevant",
+      "merge_consecutive_children": true
+    },
+    {
+      "parent_type": "root",
+      "child_type": "conflicting",
+      "merge_consecutive_children": true
+    },
+    {
+      "parent_type": "root",
+      "child_type": "inclusive",
+      "merge_consecutive_children": true
+    },
+    {
+      "parent_type": "root",
+      "child_type": "concurrent",
+      "merge_consecutive_children": true
+    },
+    {
+      "parent_type": "root",
+      "child_type": "iterating",
       "merge_consecutive_children": true
     }
   ]

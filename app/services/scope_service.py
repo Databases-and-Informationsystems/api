@@ -278,10 +278,15 @@ class ScopeService:
                 )
             ] = schema_scope_constraint["merge_consecutive_children"]
         merged_scope_id_mapping = dict()
-        parent_children_dict = defaultdict(list)
+        parent_children_dict = {
+            scope_recommendation["id"]: []
+            for scope_recommendation in scope_recommendations
+        }
+        parent_children_dict[None] = []
+
         parent_type_dict = {None: "root"}
 
-        for scope_recommendation in scope_recommendations:  # Group by parent id
+        for scope_recommendation in scope_recommendations:
             parent_children_dict[scope_recommendation["parent_scope_id"]].append(
                 scope_recommendation
             )
@@ -290,6 +295,8 @@ class ScopeService:
             ]
 
         for key in parent_children_dict:
+            if len(parent_children_dict[key]) == 0:
+                continue
             parent_children_dict[key] = sorted(
                 parent_children_dict[key],
                 key=lambda x: x["startTokenDocumentIndex"],
@@ -310,6 +317,9 @@ class ScopeService:
                         == merged["endTokenDocumentIndex"] + 1
                     ):
                         merged_scope_id_mapping[scope["id"]] = merged["id"]
+                        for s in parent_children_dict[scope["id"]]:
+                            parent_children_dict[merged["id"]].append(s)
+                        parent_children_dict[scope["id"]] = []
                         merged = {
                             "id": merged["id"],
                             "scope_type": merged["scope_type"],
@@ -325,6 +335,7 @@ class ScopeService:
                         merged_scope_id_mapping[merged["id"]] = merged["id"]
 
                 merged_scopes.append(merged)
+
         for merged_scope in merged_scopes:
             merged_scope["id"] = merged_scope_id_mapping[merged_scope["id"]]
             merged_scope["parent_scope_id"] = merged_scope_id_mapping.get(

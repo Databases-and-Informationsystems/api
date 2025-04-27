@@ -21,7 +21,8 @@ class ScopeRepository(BaseRepository):
             document_recommendation_id=document_recommendation_id,
         )
         scope = self.store_object(scope)
-        self.get_session().refresh(self.get_object_by_id(Scope, parent_scope_id))
+        if parent_scope_id is not None:
+            self.get_session().refresh(self.get_object_by_id(Scope, parent_scope_id))
         return scope
 
     def delete_scope(self, scope_id):

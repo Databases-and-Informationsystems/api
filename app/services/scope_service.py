@@ -1,6 +1,6 @@
 import logging
-from collections import defaultdict
-
+from scipy.optimize import linear_sum_assignment
+import numpy as np
 from werkzeug.exceptions import BadRequest
 
 from app.models import DocumentEdit
@@ -11,11 +11,16 @@ from app.services.document_recommendation_service import (
 )
 from app.services.schema_scope_service import SchemaScopeService, schema_scope_service
 from app.services.schema_service import SchemaService, schema_service
+from app.services.scope_postprocess_service import (
+    ScopePostprocessService,
+    scope_postprocess_service,
+)
 from app.services.token_service import TokenService, token_service
 
 
 class ScopeService:
     __scope_repository: ScopeRepository
+    scope_postprocess_service: ScopePostprocessService
     token_service: TokenService
     schema_service: SchemaService
     schema_scope_service: SchemaScopeService
@@ -24,12 +29,14 @@ class ScopeService:
     def __init__(
         self,
         scope_repository,
+        scope_postprocess_service,
         token_service,
         schema_service,
         schema_scope_service,
         document_recommendation_service,
     ):
         self.__scope_repository = scope_repository
+        self.scope_postprocess_service = scope_postprocess_service
         self.token_service = token_service
         self.schema_service = schema_service
         self.schema_scope_service = schema_scope_service
@@ -42,6 +49,12 @@ class ScopeService:
         if not scope:
             raise BadRequest("Root Node does not exist")
         return scope.to_json()
+
+    def get_scope_list_by_document_edit_id(self, document_edit_id):
+        scope_list = self.__scope_repository.get_scopes_by_document_edit(
+            document_edit_id
+        )
+        return [scope.to_flat() for scope in scope_list]
 
     def create_scope(
         self,
@@ -155,8 +168,220 @@ class ScopeService:
             document_edit_id=document_edit_id,
         )
 
-    def get_scope_recommendations(self, document_edit_id, model, step):
-        schema = self.schema_service.get_schema_by_document_edit(document_edit_id)
+    def scope_tree_similarity(
+        self, reference_document_edit_id, comparison_document_edit_id
+    ):
+        reference_document_edit = self.__scope_repository.get_object_by_id(
+            DocumentEdit, reference_document_edit_id
+        )
+
+        tokens = self.token_service.get_tokens_by_document(
+            reference_document_edit.document_id
+        )["tokens"]
+        token_dict = {token["document_index"]: token for token in tokens}
+
+        comparison_document_edit = self.__scope_repository.get_object_by_id(
+            DocumentEdit, comparison_document_edit_id
+        )
+        if (
+            not reference_document_edit.document_id
+            == comparison_document_edit.document_id
+        ):
+            raise BadRequest("Comparison of different documents not possible")
+
+        schema = self.schema_service.get_schema_by_document_edit(
+            reference_document_edit_id
+        )
+        schema_scope_constraints = (
+            self.schema_scope_service.get_schema_scope_constraints_by_schema_id(
+                schema.id
+            )
+        )
+
+        schema_scopes = self.schema_scope_service.get_schema_scopes_by_schema_id(
+            schema.id
+        )
+        procedural_schema_scope_ids = [
+            s["id"] for s in schema_scopes if s["procedural"]
+        ]
+
+        reference_tree_scopes = self.get_scope_tree_by_document_edit_id(
+            reference_document_edit_id
+        )
+        reference_leafs = self.__get_tree_leafs_with_parents_rec(reference_tree_scopes)
+        comparison_tree_scopes = self.get_scope_tree_by_document_edit_id(
+            comparison_document_edit_id
+        )
+        comparison_leafs = self.__get_tree_leafs_with_parents_rec(
+            comparison_tree_scopes
+        )
+
+        max_len = max(len(reference_leafs), len(comparison_leafs))
+        similarity_matrix = np.zeros((len(reference_leafs), len(comparison_leafs)))
+        for i, r in enumerate(reference_leafs):
+            for j, c in enumerate(comparison_leafs):
+                similarity_matrix[i, j] = self.__scope_similarity(
+                    r, c, procedural_schema_scope_ids
+                )
+        row_ind, col_ind = linear_sum_assignment(-similarity_matrix)
+        # logging.info(row_ind)
+        # logging.info(col_ind)
+        # Compute final score
+        total_sim = similarity_matrix[row_ind, col_ind].sum()
+        logging.info(total_sim / len(reference_leafs))
+        logging.info(total_sim / len(comparison_leafs))
+        logging.info(total_sim)
+
+        similarity_per_scope = []
+        for i, leaf in enumerate(reference_leafs):
+            score = 0
+            idx = 0
+            for row in row_ind:
+                if row == i:
+                    score = similarity_matrix[row_ind[idx], col_ind[idx]]
+                    break
+                idx += 1
+            similarity_per_scope.append(
+                {
+                    "token_start": token_dict[leaf["token_start"]],
+                    "token_end": token_dict[leaf["token_end"]],
+                    "similarity": score,
+                }
+            )
+            # logging.info(
+            #    "Similarity for scope {}: {}".format(
+            #        (leaf["token_start"], leaf["token_end"]), score
+            #    )
+            # )
+
+        ref = []
+        for leaf in reference_leafs:
+            ref.append((leaf["token_start"], leaf["token_end"]))
+        comp = []
+        for leaf in comparison_leafs:
+            comp.append((leaf["token_start"], leaf["token_end"]))
+        # logging.info(ref)
+        # logging.info(comp)
+        # logging.info(similarity_matrix)
+        # One-to-Many:
+        # total_sim = np.sum(np.max(similarity_matrix, axis=1))
+        # logging.info(total_sim)
+        # total_sim = np.sum(np.max(similarity_matrix, axis=0))
+        # logging.info(total_sim)
+
+        # Partial Path
+        # similarity_matrix = np.zeros((len(reference_leafs), len(comparison_leafs)))
+        # for i, r in enumerate(reference_leafs):
+        #    for j, c in enumerate(comparison_leafs):
+        #        similarity_matrix[i, j] = self.__scope_similarity_partial_path(
+        #            r.copy(), c.copy(), procedural_schema_scope_ids
+        #        )
+        # row_ind, col_ind = linear_sum_assignment(-similarity_matrix)
+        # total_sim = similarity_matrix[row_ind, col_ind].sum()
+        # logging.info(total_sim / len(reference_leafs))
+        # logging.info(total_sim / len(comparison_leafs))
+        # logging.info(total_sim)
+
+        return {
+            "total_similarity": total_sim / len(reference_leafs),
+            "#reference_scopes": len(reference_leafs),
+            "#comparison_scopes": len(comparison_leafs),
+            "similarity_per_scope": similarity_per_scope,
+        }
+
+    def __scope_similarity(
+        self, reference_scope, comparison_scope, procedural_schema_scope_ids
+    ):
+        if reference_scope["path"] != comparison_scope["path"]:
+            if (  # irrelevant/related: Layer does not matter
+                reference_scope["path"][-1] not in procedural_schema_scope_ids
+                and reference_scope["path"][-1] == comparison_scope["path"][-1]
+            ):
+                pass
+            else:
+                return 0
+        reference_tokens = set(
+            range(reference_scope["token_start"], reference_scope["token_end"] + 1)
+        )
+        comparison_tokens = set(
+            range(comparison_scope["token_start"], comparison_scope["token_end"] + 1)
+        )
+
+        intersection = reference_tokens & comparison_tokens
+        union = reference_tokens | comparison_tokens
+
+        if not union:
+            return 0.0
+        return len(intersection) / len(union)
+
+    def __scope_similarity_partial_path(
+        self, reference_scope, comparison_scope, procedural_schema_scope_ids
+    ):
+
+        reference_scope["path"] = reference_scope["path"][1:]
+        comparison_scope["path"] = comparison_scope["path"][1:]
+        similarity = 0
+        if (  # irrelevant/related: Layer does not matter
+            reference_scope["path"][-1] not in procedural_schema_scope_ids
+            and reference_scope["path"][-1] == comparison_scope["path"][-1]
+        ):
+            similarity = 1
+        else:
+            max_len = max(len(reference_scope["path"]), len(comparison_scope["path"]))
+            for r, c in zip(reference_scope["path"], comparison_scope["path"]):
+                if r != c:
+                    break
+                similarity += 1
+            similarity /= max_len
+
+        reference_tokens = set(
+            range(reference_scope["token_start"], reference_scope["token_end"] + 1)
+        )
+        comparison_tokens = set(
+            range(comparison_scope["token_start"], comparison_scope["token_end"] + 1)
+        )
+
+        intersection = reference_tokens & comparison_tokens
+        union = reference_tokens | comparison_tokens
+
+        if not union:
+            return 0.0
+        return len(intersection) / len(union) * similarity
+
+    def __get_tree_leafs_with_parents_rec(self, scope_tree, path=None):
+        path = (path or []) + [scope_tree["schema_scope"]["id"]]
+        leaf_scopes = []
+        if not scope_tree["children"]:
+            return [
+                {
+                    "path": path,
+                    "token_start": scope_tree["token_start"]["document_index"],
+                    "token_end": scope_tree["token_end"]["document_index"],
+                }
+            ]
+        for child in scope_tree["children"]:
+            leaf_scopes.extend(self.__get_tree_leafs_with_parents_rec(child, path))
+        return leaf_scopes
+
+    def __get_schema_scopes_without_children(self, schema_scope_constraints):
+        schema_scopes = {s["child_type"]["id"]: True for s in schema_scope_constraints}
+        for constraint in schema_scope_constraints:
+            if constraint["parent_type"]["id"] in schema_scopes:
+                del schema_scopes[constraint["parent_type"]["id"]]
+        return schema_scopes.keys()
+
+    def get_scope_interpretations(
+        self,
+        document_id,
+        document_content,
+        model,
+        num_interpretations,
+        temperature,
+        pass_interpretations,
+        with_text,
+        bottom_up,
+    ):
+        schema = self.schema_service.get_schema_by_document(document_id)
         schema_scopes = self.schema_scope_service.get_schema_scopes_by_schema_id(
             schema.id
         )
@@ -166,77 +391,46 @@ class ScopeService:
             )
         )
 
-        document_edit = self.__scope_repository.get_object_by_id(
-            DocumentEdit, document_edit_id
-        )
-        tokens = self.token_service.get_tokens_by_document(document_edit.document.id)[
-            "tokens"
-        ]
-
-        if step == "top-level":
-            schema_scopes = [
-                schema_scope_constraint["child_type"]
-                for schema_scope_constraint in schema_scope_constraints
-                if schema_scope_constraint["parent_type"]["type"] == "root"
-            ]
-
-        elif step == "subtrees":
-            toplevel_schema_scopes = [
-                schema_scope_constraint["child_type"]
-                for schema_scope_constraint in schema_scope_constraints
-                if schema_scope_constraint["parent_type"]["type"] == "root"
-            ]
-            schema_scopes = [
-                schema_scope
-                for schema_scope in schema_scopes
-                if any(
-                    schema_scope_constraint["parent_type"]["type"] != "root"
-                    and schema_scope_constraint["child_type"]["type"]
-                    == schema_scope["type"]
-                    for schema_scope_constraint in schema_scope_constraints
+        tokens = self.token_service.get_tokens_by_document(document_id)["tokens"]
+        interpretation_list = []
+        raw_list = []
+        for _ in range(num_interpretations):
+            recommendations = (
+                self.document_recommendation_service.get_scope_recommendation(
+                    schema_scopes,
+                    schema_scope_constraints,
+                    document_content,
+                    tokens,
+                    document_id,
+                    model,
+                    1,
+                    raw_list if pass_interpretations else [],
+                    temperature,
+                    with_text,
+                    bottom_up,
                 )
-            ]
-            tree = self.get_scope_tree_by_document_edit_id(document_edit.id)
+            )
 
-            relevant_schema_scopes = [
-                tss["type"]
-                for tss in toplevel_schema_scopes
-                if any(
-                    schema_scope_constraint["parent_type"]["type"] == tss["type"]
-                    for schema_scope_constraint in schema_scope_constraints
+            postprocessed_recommendations = (
+                self.scope_postprocess_service.postprocess_scope_tree(
+                    recommendations,
+                    tokens,
+                    schema_scopes,
+                    schema_scope_constraints,
                 )
-            ]
+            )
+            raw_list.append(recommendations)
+            interpretation_list.append(postprocessed_recommendations)
+        return interpretation_list
 
-            relevant_token_list = []
-
-            if tree["children"]:
-                for child in tree["children"]:
-                    if child["schema_scope"]["type"] in relevant_schema_scopes:
-                        relevant_token_list.extend(
-                            tokens[
-                                child["token_start"]["document_index"] : child[
-                                    "token_end"
-                                ]["document_index"]
-                            ]
-                        )
-            tokens = relevant_token_list
-
-        recommendations = self.document_recommendation_service.get_scope_recommendation(
-            schema_scopes,
-            schema_scope_constraints,
-            document_edit.document.content,
-            tokens,
-            document_edit.document.id,
-            model,
-        )
-
-        postprocessed_recommendations = self.__postprocess_scope_tree(
-            recommendations, tokens, schema_scopes, schema_scope_constraints
-        )
+    def save_scope_recommendations(
+        self, document_edit_id, postprocessed_recommendations
+    ):
         scopes = []
         scope_id_mapping = {}
         root = self.get_scope_tree_by_document_edit_id(document_edit_id)
         scope_id_mapping[None] = root["id"]
+
         for recommendation in postprocessed_recommendations:
             try:
                 if recommendation["schema_scope_id"] == root["schema_scope"]["id"]:
@@ -257,133 +451,48 @@ class ScopeService:
                 )
         return self.get_scope_tree_by_document_edit_id(document_edit_id)
 
-    def __postprocess_scope_tree(
-        self, scope_recommendations, tokens, schema_scopes, schema_scope_constraints
-    ):
-        merged_scopes = []
-        schema_scope_dict = dict()
-        for schema_scope in schema_scopes:
-            schema_scope_dict[schema_scope["type"]] = schema_scope["id"]
-
-        token_index_dict = dict()
-        for token in tokens:
-            token_index_dict[token["document_index"]] = token["id"]
-
-        merging_allowed = dict()
-        for schema_scope_constraint in schema_scope_constraints:
-            merging_allowed[
-                (
-                    schema_scope_constraint["parent_type"]["type"],
-                    schema_scope_constraint["child_type"]["type"],
-                )
-            ] = schema_scope_constraint["merge_consecutive_children"]
-        merged_scope_id_mapping = dict()
-        parent_children_dict = {
-            scope_recommendation["id"]: []
-            for scope_recommendation in scope_recommendations
-        }
-        parent_children_dict[None] = []
-
-        parent_type_dict = {None: "root"}
-
-        for scope_recommendation in scope_recommendations:
-            parent_children_dict[scope_recommendation["parent_scope_id"]].append(
-                scope_recommendation
+    def get_scope_recommendations(self, document_edit_id, model):
+        schema = self.schema_service.get_schema_by_document_edit(document_edit_id)
+        schema_scopes = self.schema_scope_service.get_schema_scopes_by_schema_id(
+            schema.id
+        )
+        schema_scope_constraints = (
+            self.schema_scope_service.get_schema_scope_constraints_by_schema_id(
+                schema.id
             )
-            parent_type_dict[scope_recommendation["id"]] = scope_recommendation[
-                "scope_type"
-            ]
+        )
 
-        for key in parent_children_dict:
-            if len(parent_children_dict[key]) == 0:
-                continue
-            parent_children_dict[key] = sorted(
-                parent_children_dict[key],
-                key=lambda x: x["startTokenDocumentIndex"],
+        document_edit = self.__scope_repository.get_object_by_id(
+            DocumentEdit, document_edit_id
+        )
+        tokens = self.token_service.get_tokens_by_document(document_edit.document.id)[
+            "tokens"
+        ]
+
+        recommendations = self.document_recommendation_service.get_scope_recommendation(
+            schema_scopes,
+            schema_scope_constraints,
+            document_edit.document.content,
+            tokens,
+            document_edit.document.id,
+            model,
+        )
+        postprocessed_recommendations = (
+            self.scope_postprocess_service.postprocess_scope_tree(
+                recommendations,
+                tokens,
+                schema_scopes,
+                schema_scope_constraints,
             )
-            merged = parent_children_dict[key][0]
-            merged_scope_id_mapping[merged["id"]] = merged["id"]
-
-            if len(parent_children_dict[key]) == 1:
-                merged_scopes.append(merged)
-            else:
-                for scope in parent_children_dict[key][1:]:
-                    if (
-                        merging_allowed.get(
-                            (parent_type_dict.get(key), scope["scope_type"])
-                        )
-                        and scope["scope_type"] == merged["scope_type"]
-                        and scope["startTokenDocumentIndex"]
-                        == merged["endTokenDocumentIndex"] + 1
-                    ):
-                        merged_scope_id_mapping[scope["id"]] = merged["id"]
-                        for s in parent_children_dict[scope["id"]]:
-                            parent_children_dict[merged["id"]].append(s)
-                        parent_children_dict[scope["id"]] = []
-                        merged = {
-                            "id": merged["id"],
-                            "scope_type": merged["scope_type"],
-                            "startTokenDocumentIndex": merged[
-                                "startTokenDocumentIndex"
-                            ],
-                            "endTokenDocumentIndex": scope["endTokenDocumentIndex"],
-                            "parent_scope_id": merged["parent_scope_id"],
-                        }
-                    else:
-                        merged_scopes.append(merged)
-                        merged = scope
-                        merged_scope_id_mapping[merged["id"]] = merged["id"]
-
-                merged_scopes.append(merged)
-
-        for merged_scope in merged_scopes:
-            merged_scope["id"] = merged_scope_id_mapping[merged_scope["id"]]
-            merged_scope["parent_scope_id"] = merged_scope_id_mapping.get(
-                merged_scope["parent_scope_id"]
-            )
-            merged_scope["schema_scope_id"] = schema_scope_dict[
-                merged_scope["scope_type"]
-            ]
-            merged_scope["token_start_id"] = token_index_dict[
-                merged_scope["startTokenDocumentIndex"]
-            ]
-            merged_scope["token_end_id"] = token_index_dict[
-                merged_scope["endTokenDocumentIndex"]
-            ]
-
-        merged_scopes = self.__merge_equal_scopes(merged_scopes)
-        logging.info(merged_scopes)
-        return sorted(merged_scopes, key=lambda x: x["id"])
-
-    def __merge_equal_scopes(self, merged_scopes):
-        scope_id_dict = dict()
-        parent_children_dict = defaultdict(list)
-        for merged_scope in merged_scopes:
-            parent_children_dict[merged_scope["parent_scope_id"]].append(merged_scope)
-            scope_id_dict[merged_scope["id"]] = merged_scope
-
-        # Merge child with parent if type and bounds are equal
-        for key in parent_children_dict:
-            if len(parent_children_dict[key]) != 1 or key is None:
-                continue
-            scope = parent_children_dict[key][0]
-            if scope_id_dict[key]["scope_type"] != scope["scope_type"]:
-                continue
-
-            if (
-                scope_id_dict[key]["startTokenDocumentIndex"]
-                == scope["startTokenDocumentIndex"]
-                and scope_id_dict[key]["endTokenDocumentIndex"]
-                == scope["endTokenDocumentIndex"]
-            ):
-                for child_scope in parent_children_dict[scope["id"]]:
-                    child_scope["parent_scope_id"] = scope["parent_scope_id"]
-                merged_scopes = [s for s in merged_scopes if s["id"] != scope["id"]]
-        return merged_scopes
+        )
+        return self.save_scope_recommendations(
+            document_edit.id, postprocessed_recommendations
+        )
 
 
 scope_service = ScopeService(
     ScopeRepository(),
+    scope_postprocess_service,
     token_service,
     schema_service,
     schema_scope_service,

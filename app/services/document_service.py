@@ -4,6 +4,7 @@ from app.services.document_edit_service import (
     document_edit_service,
     DocumentEditService,
 )
+from app.services.scope_service import scope_service, ScopeService
 from app.services.token_service import TokenService, token_service
 
 
@@ -11,16 +12,19 @@ class DocumentService:
     __document_repository: DocumentRepository
     token_service: TokenService
     document_edit_service: DocumentEditService
+    scope_service: ScopeService
 
     def __init__(
         self,
         document_repository,
         token_service,
         document_edit_service,
+        scope_service,
     ):
         self.__document_repository = document_repository
         self.token_service = token_service
         self.document_edit_service = document_edit_service
+        self.scope_service = scope_service
 
     def get_documents_by_project(self, user_id, project_id):
         """
@@ -222,9 +226,41 @@ class DocumentService:
         # Return the updated document in correct response format
         return self.get_document_by_id(document.id, user_id)
 
+    def get_scope_interpretations(
+        self,
+        user_id,
+        document_id,
+        model,
+        num_interpretations,
+        pass_interpretations,
+        temperature,
+        with_text,
+        bottom_up,
+    ):
+        document = self.get_document_by_id(document_id, user_id)
+        scope_interpretations = self.scope_service.get_scope_interpretations(
+            document["id"],
+            document["content"],
+            model,
+            num_interpretations,
+            temperature,
+            pass_interpretations,
+            with_text,
+            bottom_up,
+        )
+
+        saved_interpretations = []
+        for interpretation in scope_interpretations:
+            doc_edit = self.document_edit_service.create_document_edit(
+                user_id, document_id
+            )
+            scope_tree = self.scope_service.save_scope_recommendations(
+                doc_edit["id"], interpretation
+            )
+            saved_interpretations.append(scope_tree)
+        return saved_interpretations
+
 
 document_service = DocumentService(
-    DocumentRepository(),
-    token_service,
-    document_edit_service,
+    DocumentRepository(), token_service, document_edit_service, scope_service
 )

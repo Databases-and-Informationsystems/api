@@ -373,6 +373,11 @@ class DocumentRecommendationService:
         tokens,
         document_id=None,
         model=None,
+        cache_datetime=None,
+        interpretations=None,
+        temperature=None,
+        with_text=False,
+        bottom_up=False,
     ):
         url = current_app.config.get("SCOPE_URL") + "/scopes"
         headers = {
@@ -389,10 +394,20 @@ class DocumentRecommendationService:
             "content": content,
             "tokens": tokens,
         }
-        response = requests.post(
-            url, json=json_input, headers=headers, params={"model": model}
-        )
+        params = {"model": model}
+        if cache_datetime is not None:
+            params["cache_datetime"] = 1
+        if temperature is not None:
+            params["temperature"] = temperature
+        if with_text:
+            params["with_text"] = with_text
+        if bottom_up:
+            params["bottom_up"] = bottom_up
+        if interpretations is not None:
+            json_input["interpretations"] = interpretations
+        response = requests.get(url, json=json_input, headers=headers, params=params)
         if response.status_code != 200:
+            logging.info(response.text)
             raise BadRequest("Failed to fetch scope recommendations: " + response.text)
         scope_recommendations = response.json()
         return scope_recommendations

@@ -1,10 +1,16 @@
+import logging
+
 from flask import request
 from flask_restx import Namespace
 
 from app.dtos import scope_create_input_dto
 from app.routes.base_routes import AuthorizedBaseRoute
 from app.services.scope_service import scope_service, ScopeService
-from app.dtos import scope_output_dto
+from app.dtos import (
+    scope_output_dto,
+    scope_similarity_output_dto,
+    scope_flat_output_dto,
+)
 
 ns = Namespace("scopes", description="Scope related operations")
 
@@ -51,6 +57,24 @@ class ScopeQueryResource(ScopeBaseRoute):
         return response.to_json()
 
 
+@ns.route("/list/<int:document_edit_id>")
+@ns.doc(params={"document_edit_id": "A Document Edit ID"})
+@ns.response(403, "Authorization required")
+@ns.response(404, "Data not found")
+class ScopeFlatQueryResource(ScopeBaseRoute):
+
+    @ns.marshal_with(scope_flat_output_dto)
+    def get(self, document_edit_id):
+        """
+        Fetch flat scope list of document edit
+        """
+        user_id = self.user_service.get_logged_in_user_id()
+        self.user_service.check_user_document_edit_accessible(user_id, document_edit_id)
+
+        response = self.service.get_scope_list_by_document_edit_id(document_edit_id)
+        return response
+
+
 @ns.route("/recommendation/<int:document_edit_id>")
 @ns.doc(params={"document_edit_id": "A Document Edit ID"})
 @ns.response(403, "Authorization required")
@@ -64,11 +88,6 @@ class ScopeRecommendationResource(ScopeBaseRoute):
                 "description": "Recommendation Model that should be used.",
                 "required": False,
             },
-            "step": {
-                "description": "Which step of scope recommendation should take place (default: all).",
-                "required": False,
-                "enum": ["top-level", "subtrees", "all"],
-            },
         },
         description="Executes the mention detection step.",
     )
@@ -80,5 +99,25 @@ class ScopeRecommendationResource(ScopeBaseRoute):
         self.user_service.check_user_document_edit_accessible(user_id, document_edit_id)
 
         model = request.args.get("model")
-        step = request.args.get("step")
-        return self.service.get_scope_recommendations(document_edit_id, model, step)
+        return self.service.get_scope_recommendations(document_edit_id, model)
+
+
+@ns.route("/similarity/<int:document_edit_id>/<int:compare_document_edit_id>")
+@ns.doc(params={"document_edit_id": "A Document Edit ID"})
+@ns.doc(params={"compare_document_edit_id": "Document Edit ID to compare with"})
+@ns.response(403, "Authorization required")
+@ns.response(404, "Data not found")
+class ScopeSimilarityResource(ScopeBaseRoute):
+
+    @ns.marshal_with(scope_similarity_output_dto)
+    def get(self, document_edit_id, compare_document_edit_id):
+        """
+        Compute scope tree similarity between two documents edits
+        """
+        user_id = self.user_service.get_logged_in_user_id()
+        self.user_service.check_user_document_edit_accessible(user_id, document_edit_id)
+        response = self.service.scope_tree_similarity(
+            document_edit_id, compare_document_edit_id
+        )
+
+        return response

@@ -60,3 +60,11 @@ class ScopeRepository(BaseRepository):
             .filter(Scope.schema_scope.has(SchemaScope.type == "root"))
             .first()
         )
+
+    def get_scopes_by_document_edit(self, document_edit_id):
+        return (
+            self.get_session()
+            .query(Scope)
+            .filter(Scope.document_edit_id == document_edit_id)
+            .all()
+        )

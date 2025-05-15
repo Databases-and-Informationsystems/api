@@ -12,6 +12,7 @@ from app.dtos import (
     heatmap_output_list_dto,
     jaccard_output_dto,
     document_state_update_dto,
+    scope_output_dto,
 )
 from app.routes.base_routes import AuthorizedBaseRoute
 
@@ -269,3 +270,63 @@ class DocumentStateResource(DocumentBaseRoute):
         )
 
         return updated_document
+
+
+@ns.route("/interpretations/<int:document_id>")
+@ns.doc(params={"document_edit_id": "A Document ID"})
+@ns.response(403, "Authorization required")
+@ns.response(404, "Data not found")
+class ScopeInterpretationResource(DocumentBaseRoute):
+
+    @ns.marshal_with(scope_output_dto, as_list=True)
+    @ns.doc(
+        params={
+            "model": {
+                "description": "Recommendation Model that should be used.",
+                "required": False,
+            },
+            "num_interpretations": {
+                "description": "How many interpretations should be generated. Maximum: 10. Default: 4",
+                "required": False,
+            },
+            "pass_interpretations": {
+                "description": "Shall interpretations be passed to the model? Default: False",
+                "required": False,
+            },
+            "temperature": {
+                "description": f"Temperature of the model",
+                "required": False,
+            },
+            "with_text": {
+                "description": f"Include the text in the prompt (only tokens otherwise)? (default: false)",
+                "required": False,
+            },
+            "bottom-up": {
+                "description": f"First generate leafs and afterwards scope tree? (default: false)",
+                "required": False,
+            },
+        }
+    )
+    def post(self, document_id):
+        """
+        Generate recommendations for scopes of a document edit
+        """
+        user_id = self.user_service.get_logged_in_user_id()
+        self.user_service.check_user_document_accessible(user_id, document_id)
+
+        model = request.args.get("model")
+        num_interpretations = request.args.get("num_interpretations")
+        if num_interpretations:
+            self.verify_positive_integer(num_interpretations)
+        else:
+            num_interpretations = 2
+        return self.service.get_scope_interpretations(
+            user_id,
+            document_id,
+            model,
+            int(num_interpretations),
+            request.args.get("pass_interpretations"),
+            request.args.get("temperature"),
+            request.args.get("with_text"),
+            request.args.get("bottom-up"),
+        )

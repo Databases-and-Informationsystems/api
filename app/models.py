@@ -270,6 +270,8 @@ class SchemaScope(db.Model):
     description = db.Column(db.String(), unique=False, nullable=False)
     schema_id = db.Column(db.Integer, db.ForeignKey("Schema.id"), nullable=False)
     color = db.Column(db.String(), unique=False, nullable=True)
+    procedural = db.Column(db.Boolean, nullable=True, default=True)
+    minimum_children = db.Column(db.Integer, nullable=True, default=0)
 
     def to_json(self):
         return {
@@ -278,6 +280,8 @@ class SchemaScope(db.Model):
             "description": self.description,
             "schema_id": self.schema_id,
             "color": self.color,
+            "procedural": self.procedural,
+            "minimum_children": self.minimum_children,
         }
 
 
@@ -352,4 +356,15 @@ class Scope(db.Model):
             "token_end": self.token_end.to_json(),
             "parent_scope_id": self.parent_scope_id,
             "children": [child.to_json() for child in self.children],
+        }
+
+    def to_flat(self):
+        return {
+            "id": self.id,
+            "scope_type": self.schema_scope.type,
+            "document_edit_id": self.document_edit_id,
+            "document_recommendation_id": self.document_recommendation_id,
+            "startTokenDocumentIndex": self.token_start.document_index,
+            "endTokenDocumentIndex": self.token_end.document_index,
+            "parent_scope_id": self.parent_scope_id,
         }

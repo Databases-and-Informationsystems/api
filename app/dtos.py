@@ -968,3 +968,38 @@ scope_output_dto = api.model(
     },
 )
 scope_output_dto["children"] = fields.List(fields.Nested(scope_output_dto))
+
+scope_similarity_single_scope = api.model(
+    "ScopeSimilaritySingleScope",
+    {
+        "token_start": fields.Nested(token_model),
+        "token_end": fields.Nested(token_model),
+        "similarity": fields.Float(),
+    },
+)
+
+scope_similarity_output_dto = api.model(
+    "ScopeSimilarityOutput",
+    {
+        "total_similarity": fields.Float(),
+        "#reference_scopes": fields.Integer(),
+        "#comparison_scopes": fields.Integer(),
+        "similarity_per_scope": fields.List(
+            fields.Nested(scope_similarity_single_scope)
+        ),
+    },
+)
+
+
+scope_flat_output_dto = api.model(
+    "ScopeFlatOutput",
+    {
+        "id": fields.Integer(),
+        "scope_type": fields.String(),
+        "document_edit_id": fields.Integer(),
+        "document_recommendation_id": fields.Integer(),
+        "startTokenDocumentIndex": fields.Integer(),
+        "endTokenDocumentIndex": fields.Integer,
+        "parent_scope_id": fields.Integer(),
+    },
+)

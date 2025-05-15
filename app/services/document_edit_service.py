@@ -83,9 +83,9 @@ class DocumentEditService:
         :raises BadRequest: If annotation already exists, invalid model IDs were given or recommendation generation fails.
         """
         # Check if document edit already exists
-        existing_doc_edit = self.__get_document_edit_by_document(document_id, user_id)
-        if existing_doc_edit is not None:
-            raise BadRequest("Document Edit already exists")
+        # existing_doc_edit = self.__get_document_edit_by_document(document_id, user_id)
+        # if existing_doc_edit is not None:
+        #    raise BadRequest("Document Edit already exists")
 
         # Get schema of document
         schema = self.schema_service.get_schema_by_document(document_id)

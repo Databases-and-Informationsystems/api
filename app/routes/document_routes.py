@@ -301,8 +301,12 @@ class ScopeInterpretationResource(DocumentBaseRoute):
                 "description": f"Include the text in the prompt (only tokens otherwise)? (default: false)",
                 "required": False,
             },
-            "bottom-up": {
+            "bottom_up": {
                 "description": f"First generate leafs and afterwards scope tree? (default: false)",
+                "required": False,
+            },
+            "only_text": {
+                "description": f"Only pass text instead of tokens to the llm? (default: false)",
                 "required": False,
             },
         }
@@ -321,12 +325,5 @@ class ScopeInterpretationResource(DocumentBaseRoute):
         else:
             num_interpretations = 2
         return self.service.get_scope_interpretations(
-            user_id,
-            document_id,
-            model,
-            int(num_interpretations),
-            request.args.get("pass_interpretations"),
-            request.args.get("temperature"),
-            request.args.get("with_text"),
-            request.args.get("bottom-up"),
+            user_id, document_id, model, int(num_interpretations), request.args
         )

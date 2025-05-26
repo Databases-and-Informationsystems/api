@@ -1,3 +1,5 @@
+import logging
+
 from werkzeug.exceptions import BadRequest, NotFound
 
 from app.repositories.document_edit_repository import DocumentEditRepository
@@ -715,6 +717,33 @@ class DocumentEditService:
         }
 
         return {"actual": actual_document_edit, "predicted": predicted_document_edit}
+
+    def get_scope_combinations(self, user_id, ref_doc_edit_id, comp_doc_edit_id):
+        ref_edit = self.get_document_edit_by_id(ref_doc_edit_id)
+        comp_edit = self.get_document_edit_by_id(comp_doc_edit_id)
+        if not ref_edit["document"]["id"] == comp_edit["document"]["id"]:
+            raise BadRequest("Document edits do not belong to same document")
+
+        tokens = self.token_service.get_tokens_by_document(ref_edit["document"]["id"])[
+            "tokens"
+        ]
+
+        combos = self.scope_service.get_scope_combinations(
+            ref_doc_edit_id, comp_doc_edit_id, tokens
+        )
+
+        logging.info(len(combos))
+        saved_combos = []
+        for combo in combos:
+            doc_edit = self.create_document_edit(user_id, ref_edit["document"]["id"])
+            scope_tree = self.scope_service.save_scope_recommendations(
+                doc_edit["id"], combo
+            )
+            saved_combos.append(scope_tree)
+            logging.info(
+                self.scope_service.get_scope_list_by_document_edit_id(doc_edit["id"])
+            )
+        return saved_combos
 
 
 document_edit_service = DocumentEditService(

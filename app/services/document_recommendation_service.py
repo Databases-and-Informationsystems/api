@@ -373,11 +373,8 @@ class DocumentRecommendationService:
         tokens,
         document_id=None,
         model=None,
-        cache_datetime=None,
+        req_params=None,
         interpretations=None,
-        temperature=None,
-        with_text=False,
-        bottom_up=False,
     ):
         url = current_app.config.get("SCOPE_URL") + "/scopes"
         headers = {
@@ -395,16 +392,59 @@ class DocumentRecommendationService:
             "tokens": tokens,
         }
         params = {"model": model}
-        if cache_datetime is not None:
-            params["cache_datetime"] = 1
-        if temperature is not None:
-            params["temperature"] = temperature
-        if with_text:
-            params["with_text"] = with_text
-        if bottom_up:
-            params["bottom_up"] = bottom_up
-        if interpretations is not None:
+        for param in req_params:
+            if param == "only_leafs":
+                url += "/leafs"
+            else:
+                params[param] = req_params[param]
+        if interpretations:
             json_input["interpretations"] = interpretations
+        response = requests.get(url, json=json_input, headers=headers, params=params)
+        if response.status_code != 200:
+            logging.info(response.text)
+            raise BadRequest("Failed to fetch scope recommendations: " + response.text)
+        scope_recommendations = response.json()
+        scope_recommendations = sorted(
+            scope_recommendations,
+            key=lambda x: (x["startTokenDocumentIndex"], -x["endTokenDocumentIndex"]),
+        )
+        return scope_recommendations
+
+    def get_scope_recommendation_branches(
+        self,
+        schema_scopes,
+        schema_scope_constraints,
+        content,
+        tokens,
+        leafs,
+        document_id=None,
+        model=None,
+        req_params=None,
+        interpretations=None,
+    ):
+        url = current_app.config.get("SCOPE_URL") + "/scopes/branches"
+        headers = {
+            "accept": "application/json",
+            "Content-Type": "application/json",
+        }
+
+        json_input = {
+            "document_id": str(document_id) if document_id else None,
+            "schema": {
+                "schema_scopes": schema_scopes,
+                "schema_scope_constraints": schema_scope_constraints,
+            },
+            "content": content,
+            "tokens": tokens,
+            "leafs": leafs,
+        }
+        params = {"model": model}
+        for param in req_params:
+            if param == "interpretations":
+                json_input["interpretations"] = interpretations
+            else:
+                params[param] = req_params[param]
+
         response = requests.get(url, json=json_input, headers=headers, params=params)
         if response.status_code != 200:
             logging.info(response.text)

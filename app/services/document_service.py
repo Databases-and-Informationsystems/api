@@ -227,26 +227,11 @@ class DocumentService:
         return self.get_document_by_id(document.id, user_id)
 
     def get_scope_interpretations(
-        self,
-        user_id,
-        document_id,
-        model,
-        num_interpretations,
-        pass_interpretations,
-        temperature,
-        with_text,
-        bottom_up,
+        self, user_id, document_id, model, num_interpretations, req_params
     ):
         document = self.get_document_by_id(document_id, user_id)
         scope_interpretations = self.scope_service.get_scope_interpretations(
-            document["id"],
-            document["content"],
-            model,
-            num_interpretations,
-            temperature,
-            pass_interpretations,
-            with_text,
-            bottom_up,
+            document["id"], document["content"], model, num_interpretations, req_params
         )
 
         saved_interpretations = []

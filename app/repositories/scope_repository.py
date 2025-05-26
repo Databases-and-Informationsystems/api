@@ -68,3 +68,18 @@ class ScopeRepository(BaseRepository):
             .filter(Scope.document_edit_id == document_edit_id)
             .all()
         )
+
+    def delete_scope_tree(self, document_edit_id):
+        scopes = (
+            self.get_session()
+            .query(Scope)
+            .filter_by(document_edit_id=document_edit_id)
+            .all()
+        )
+        for scope in scopes:
+            # do not delete root
+            if scope.parent_scope_id is not None:
+                self.get_session().delete(scope)
+        if not scopes:
+            return False
+        return True

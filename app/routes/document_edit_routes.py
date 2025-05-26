@@ -199,3 +199,23 @@ class DocumentEditF1Score(DocumentEditBaseRoute):
         user_id = self.user_service.get_logged_in_user_id()
         self.user_service.check_user_document_edit_accessible(user_id, document_edit_id)
         return self.service.get_f1_score(document_edit_id)
+
+
+@ns.route("/combinations/<int:document_edit_id>/<int:compare_document_edit_id>")
+@ns.doc(params={"document_edit_id": "A Document Edit ID"})
+@ns.doc(params={"compare_document_edit_id": "Document Edit ID to compare with"})
+@ns.response(403, "Authorization required")
+@ns.response(404, "Data not found")
+class ScopeCombinationsQueryResource(DocumentEditBaseRoute):
+
+    def post(self, document_edit_id, compare_document_edit_id):
+        """
+        Create document edits of combinations of scope interpretations
+        """
+        user_id = self.user_service.get_logged_in_user_id()
+        self.user_service.check_user_document_edit_accessible(user_id, document_edit_id)
+
+        response = self.service.get_scope_combinations(
+            user_id, document_edit_id, compare_document_edit_id
+        )
+        return response

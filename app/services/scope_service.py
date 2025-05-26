@@ -1,3 +1,4 @@
+import copy
 import logging
 from scipy.optimize import linear_sum_assignment
 import numpy as np
@@ -16,6 +17,7 @@ from app.services.scope_postprocess_service import (
     scope_postprocess_service,
 )
 from app.services.token_service import TokenService, token_service
+import itertools
 
 
 class ScopeService:
@@ -201,8 +203,8 @@ class ScopeService:
         schema_scopes = self.schema_scope_service.get_schema_scopes_by_schema_id(
             schema.id
         )
-        procedural_schema_scope_ids = [
-            s["id"] for s in schema_scopes if s["procedural"]
+        process_relevant_schema_scope_ids = [
+            s["id"] for s in schema_scopes if s["process_relevant"]
         ]
 
         reference_tree_scopes = self.get_scope_tree_by_document_edit_id(
@@ -221,7 +223,7 @@ class ScopeService:
         for i, r in enumerate(reference_leafs):
             for j, c in enumerate(comparison_leafs):
                 similarity_matrix[i, j] = self.__scope_similarity(
-                    r, c, procedural_schema_scope_ids
+                    r, c, process_relevant_schema_scope_ids
                 )
         row_ind, col_ind = linear_sum_assignment(-similarity_matrix)
         # logging.info(row_ind)
@@ -274,7 +276,7 @@ class ScopeService:
         # for i, r in enumerate(reference_leafs):
         #    for j, c in enumerate(comparison_leafs):
         #        similarity_matrix[i, j] = self.__scope_similarity_partial_path(
-        #            r.copy(), c.copy(), procedural_schema_scope_ids
+        #            r.copy(), c.copy(), process_relevant_schema_scope_ids
         #        )
         # row_ind, col_ind = linear_sum_assignment(-similarity_matrix)
         # total_sim = similarity_matrix[row_ind, col_ind].sum()
@@ -290,11 +292,11 @@ class ScopeService:
         }
 
     def __scope_similarity(
-        self, reference_scope, comparison_scope, procedural_schema_scope_ids
+        self, reference_scope, comparison_scope, process_relevant_schema_scope_ids
     ):
         if reference_scope["path"] != comparison_scope["path"]:
             if (  # irrelevant/related: Layer does not matter
-                reference_scope["path"][-1] not in procedural_schema_scope_ids
+                reference_scope["path"][-1] not in process_relevant_schema_scope_ids
                 and reference_scope["path"][-1] == comparison_scope["path"][-1]
             ):
                 pass
@@ -315,14 +317,14 @@ class ScopeService:
         return len(intersection) / len(union)
 
     def __scope_similarity_partial_path(
-        self, reference_scope, comparison_scope, procedural_schema_scope_ids
+        self, reference_scope, comparison_scope, process_relevant_schema_scope_ids
     ):
 
         reference_scope["path"] = reference_scope["path"][1:]
         comparison_scope["path"] = comparison_scope["path"][1:]
         similarity = 0
         if (  # irrelevant/related: Layer does not matter
-            reference_scope["path"][-1] not in procedural_schema_scope_ids
+            reference_scope["path"][-1] not in process_relevant_schema_scope_ids
             and reference_scope["path"][-1] == comparison_scope["path"][-1]
         ):
             similarity = 1
@@ -371,15 +373,7 @@ class ScopeService:
         return schema_scopes.keys()
 
     def get_scope_interpretations(
-        self,
-        document_id,
-        document_content,
-        model,
-        num_interpretations,
-        temperature,
-        pass_interpretations,
-        with_text,
-        bottom_up,
+        self, document_id, document_content, model, num_interpretations, req_params
     ):
         schema = self.schema_service.get_schema_by_document(document_id)
         schema_scopes = self.schema_scope_service.get_schema_scopes_by_schema_id(
@@ -394,6 +388,8 @@ class ScopeService:
         tokens = self.token_service.get_tokens_by_document(document_id)["tokens"]
         interpretation_list = []
         raw_list = []
+        req_params = dict(req_params)
+        req_params["cache_datetime"] = 1
         for _ in range(num_interpretations):
             recommendations = (
                 self.document_recommendation_service.get_scope_recommendation(
@@ -403,11 +399,8 @@ class ScopeService:
                     tokens,
                     document_id,
                     model,
-                    1,
-                    raw_list if pass_interpretations else [],
-                    temperature,
-                    with_text,
-                    bottom_up,
+                    req_params,
+                    raw_list if req_params.get("pass_interpretations") else None,
                 )
             )
 
@@ -451,7 +444,7 @@ class ScopeService:
                 )
         return self.get_scope_tree_by_document_edit_id(document_edit_id)
 
-    def get_scope_recommendations(self, document_edit_id, model):
+    def get_scope_recommendations(self, document_edit_id, model, params):
         schema = self.schema_service.get_schema_by_document_edit(document_edit_id)
         schema_scopes = self.schema_scope_service.get_schema_scopes_by_schema_id(
             schema.id
@@ -476,18 +469,242 @@ class ScopeService:
             tokens,
             document_edit.document.id,
             model,
+            req_params=params,
         )
-        postprocessed_recommendations = (
-            self.scope_postprocess_service.postprocess_scope_tree(
-                recommendations,
-                tokens,
-                schema_scopes,
-                schema_scope_constraints,
+        recommendations = self.scope_postprocess_service.postprocess_scope_tree(
+            recommendations,
+            tokens,
+            schema_scopes,
+            schema_scope_constraints,
+        )
+        return self.save_scope_recommendations(document_edit.id, recommendations)
+
+    def get_scope_recommendations_branches(self, document_edit_id, model, params):
+        schema = self.schema_service.get_schema_by_document_edit(document_edit_id)
+        schema_scopes = self.schema_scope_service.get_schema_scopes_by_schema_id(
+            schema.id
+        )
+        schema_scope_constraints = (
+            self.schema_scope_service.get_schema_scope_constraints_by_schema_id(
+                schema.id
             )
         )
-        return self.save_scope_recommendations(
-            document_edit.id, postprocessed_recommendations
+
+        document_edit = self.__scope_repository.get_object_by_id(
+            DocumentEdit, document_edit_id
         )
+        scopes = self.get_scope_list_by_document_edit_id(document_edit_id)
+        scopes = [scope for scope in scopes if scope["scope_type"] != "root"]
+        logging.info(scopes)
+        tokens = self.token_service.get_tokens_by_document(document_edit.document.id)[
+            "tokens"
+        ]
+
+        recommendations = (
+            self.document_recommendation_service.get_scope_recommendation_branches(
+                schema_scopes,
+                schema_scope_constraints,
+                document_edit.document.content,
+                tokens,
+                scopes,
+                document_edit.document.id,
+                model,
+                req_params=params,
+            )
+        )
+
+        recommendations = self.scope_postprocess_service.postprocess_scope_tree(
+            recommendations,
+            tokens,
+            schema_scopes,
+            schema_scope_constraints,
+        )
+        self.delete_scope_tree(document_edit_id)
+        logging.info(recommendations)
+        return self.save_scope_recommendations(document_edit.id, recommendations)
+
+    def __get_ambiguous_subtrees(self, ref_doc_edit, comp_doc_edit):
+        ambiguous_subtrees = []
+
+        def __traverse_subtrees(ref_tree, comp_tree_candidates):
+            matched_sub_tree = None
+            for comp_tree in comp_tree_candidates:
+                if self.__subtrees_equal(ref_tree, comp_tree):
+                    matched_sub_tree = comp_tree
+                    logging.info("matched")
+                    break
+            if not matched_sub_tree:
+                logging.info("not matched")
+                next_comps = []
+                for comp_tree in comp_tree_candidates:
+                    if self.__layer_equal(ref_tree, comp_tree):
+                        next_comps.append(comp_tree)
+                        logging.info("matched top layer")
+                if not next_comps:
+                    ref_tree["parent_scope_id"] = comp_tree_candidates[0][
+                        "parent_scope_id"
+                    ]
+                    ambiguous_subtrees.append(ref_tree)
+                else:
+                    candidates = []
+                    for next_comp in next_comps:
+                        for child in next_comp["children"]:
+                            candidates.append(child)
+                    for ref_child in ref_tree["children"]:
+                        __traverse_subtrees(ref_child, candidates)
+
+        __traverse_subtrees(ref_doc_edit, [comp_doc_edit])
+        # logging.info(ambiguous_subtrees)
+        return ambiguous_subtrees
+
+    def __subtrees_equal(self, ref_child, comp_child):
+        if (
+            ref_child["schema_scope"] != comp_child["schema_scope"]
+            or len(ref_child["children"]) != len(comp_child["children"])
+            or ref_child["token_start"]["id"] != comp_child["token_start"]["id"]
+            or ref_child["token_end"]["id"] != comp_child["token_end"]["id"]
+        ):
+            return False
+        return all(
+            self.__subtrees_equal(r, c)
+            for r, c in zip(
+                sorted(ref_child["children"], key=lambda x: x["token_start"]["id"]),
+                sorted(comp_child["children"], key=lambda x: x["token_start"]["id"]),
+            )
+        )
+
+    def __layer_equal(self, ref_child, comp_child):
+        if (
+            ref_child["schema_scope"]["type"] != comp_child["schema_scope"]["type"]
+            or ref_child["token_start"]["id"] != comp_child["token_start"]["id"]
+            or ref_child["token_end"]["id"] != comp_child["token_end"]["id"]
+        ):
+            return False
+        return True
+
+    def get_scope_combinations(self, ref_doc_edit_id, comp_doc_edit_id, tokens):
+        ref_doc_edit = self.get_scope_tree_by_document_edit_id(ref_doc_edit_id)
+        comp_doc_edit = self.get_scope_tree_by_document_edit_id(comp_doc_edit_id)
+
+        ambiguous_scopes = self.__get_ambiguous_subtrees(ref_doc_edit, comp_doc_edit)
+
+        token_index_dict = dict()
+        for token in tokens:
+            token_index_dict[token["document_index"]] = token["id"]
+
+        all_combinations = []
+        for r in range(1, len(ambiguous_scopes)):
+            all_combinations.extend(itertools.combinations(ambiguous_scopes, r))
+
+        all_combinations = [list(comb) for comb in all_combinations]
+
+        combo_trees = []
+        for combination in all_combinations:
+            invalid_combination = False
+            compare_tree = copy.deepcopy(comp_doc_edit)
+            for scope in combination:
+                parent = self.__get_scope_in_tree(
+                    compare_tree, scope["parent_scope_id"]
+                )
+                new_children = []
+                for child in parent["children"]:
+                    # case 1: child is completely inside scope => remove child
+                    if (
+                        child["token_start"]["document_index"]
+                        >= scope["token_start"]["document_index"]
+                        and child["token_end"]["document_index"]
+                        <= scope["token_end"]["document_index"]
+                    ):
+                        continue
+
+                    # case 2: child starts inside scope => adjust start
+                    elif (
+                        scope["token_start"]["document_index"]
+                        <= child["token_start"]["document_index"]
+                        <= scope["token_end"]["document_index"]
+                    ):
+                        child["token_start"]["document_index"] = (
+                            scope["token_end"]["document_index"] + 1
+                        )
+                        child["token_start"]["id"] = token_index_dict[
+                            child["token_start"]["document_index"]
+                        ]
+                        child_flat = self.__tree_to_flat(child)
+                        for child_child in child_flat:
+                            # new scope completely covers existing child_child => discard combination
+                            if (
+                                child_child["token_end"]["document_index"]
+                                < child["token_start"]["document_index"]
+                            ):
+                                invalid_combination = True
+                                break
+                        new_children.append(child)
+
+                    # case 3: scope is completely inside child => remove child
+                    elif (
+                        child["token_start"]["document_index"]
+                        <= scope["token_start"]["document_index"]
+                        and child["token_end"]["document_index"]
+                        >= scope["token_end"]["document_index"]
+                    ):
+                        continue
+
+                    # case 4: child ends inside scope => adjust end
+                    elif (
+                        scope["token_start"]["document_index"]
+                        <= child["token_end"]["document_index"]
+                        <= scope["token_end"]["document_index"]
+                    ):
+                        child["token_end"]["document_index"] = (
+                            scope["token_start"]["document_index"] - 1
+                        )
+                        child["token_end"]["id"] = token_index_dict[
+                            child["token_end"]["document_index"]
+                        ]
+
+                        child_flat = self.__tree_to_flat(child)
+                        for child_child in child_flat:
+                            # new scope completely covers existing child_child => discard combination
+                            if (
+                                child_child["token_start"]["document_index"]
+                                > child["token_end"]["document_index"]
+                            ):
+                                invalid_combination = True
+                                break
+                        new_children.append(child)
+                    else:
+                        new_children.append(child)
+
+                    if invalid_combination:
+                        break
+                if invalid_combination:
+                    break
+                parent["children"] = new_children
+                parent["children"].append(scope)
+            if not invalid_combination:
+                compare_tree = self.scope_postprocess_service.extend_child_scopes(
+                    self.__tree_to_flat(compare_tree)
+                )
+                combo_trees.append(compare_tree)
+        return combo_trees
+
+    def __tree_to_flat(self, tree):
+        scopes = []
+
+        def traverse(cur_scope):
+            cur_scope["schema_scope_id"] = cur_scope["schema_scope"]["id"]
+            cur_scope["token_start_id"] = cur_scope["token_start"]["id"]
+            cur_scope["token_end_id"] = cur_scope["token_end"]["id"]
+            scopes.append(cur_scope)
+
+            for child in cur_scope.get("children", []):
+                traverse(child)
+
+        traverse(tree)
+        return scopes
+
+    def delete_scope_tree(self, document_edit_id):
+        return self.__scope_repository.delete_scope_tree(document_edit_id)
 
 
 scope_service = ScopeService(

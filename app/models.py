@@ -270,8 +270,12 @@ class SchemaScope(db.Model):
     description = db.Column(db.String(), unique=False, nullable=False)
     schema_id = db.Column(db.Integer, db.ForeignKey("Schema.id"), nullable=False)
     color = db.Column(db.String(), unique=False, nullable=True)
-    procedural = db.Column(db.Boolean, nullable=True, default=True)
-    minimum_children = db.Column(db.Integer, nullable=True, default=0)
+    process_relevant = db.Column(db.Boolean, nullable=True, default=True)
+    minimum_children_process_relevant = db.Column(db.Integer, nullable=True, default=0)
+    maximum_children_process_relevant = db.Column(db.Integer, nullable=True, default=0)
+    commutative = db.Column(db.Boolean, nullable=True, default=False)
+    horizontal_merging = db.Column(db.Boolean, nullable=True, default=False)
+    vertical_merging = db.Column(db.Boolean, nullable=True, default=False)
 
     def to_json(self):
         return {
@@ -280,8 +284,12 @@ class SchemaScope(db.Model):
             "description": self.description,
             "schema_id": self.schema_id,
             "color": self.color,
-            "procedural": self.procedural,
-            "minimum_children": self.minimum_children,
+            "process_relevant": self.process_relevant,
+            "minimum_children_process_relevant": self.minimum_children_process_relevant,
+            "maximum_children_process_relevant": self.maximum_children_process_relevant,
+            "commutative": self.commutative,
+            "horizontal_merging": self.horizontal_merging,
+            "vertical_merging": self.vertical_merging,
         }
 
 
@@ -304,13 +312,11 @@ class SchemaScopeConstraint(db.Model):
         foreign_keys=[schema_scope_child_id],
         backref="constraints_as_child",
     )
-    merge_consecutive_children = db.Column(db.Boolean, default=False)
 
     def to_json(self):
         return {
             "parent_type": self.schema_scope_parent.to_json(),
             "child_type": self.schema_scope_child.to_json(),
-            "merge_consecutive_children": self.merge_consecutive_children,
         }
 
 

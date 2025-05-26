@@ -27,10 +27,10 @@ class ScopePostprocessService:
                     schema_scope_constraint["child_type"]["type"],
                 )
             ] = True
-        scope_recommendations = self.__extend_child_scopes(scope_recommendations)
+        scope_recommendations = self.extend_child_scopes(scope_recommendations)
 
         scope_recommendations = self.__move_up_incorrect_scopes(
-            scope_recommendations, schema_scope_constraint_dict
+            scope_recommendations, schema_scope_constraint_dict, schema_scope_dict
         )
         scope_recommendations = self.__move_up_bottom_scopes(
             scope_recommendations, schema_scope_dict
@@ -39,7 +39,6 @@ class ScopePostprocessService:
         merged_scopes = self.__merge_consecutive_scopes(
             scope_recommendations,
             token_index_dict,
-            schema_scope_constraints,
             schema_scope_dict,
         )
         merged_scopes = self.__replace_scopes_with_missing_children(
@@ -49,15 +48,23 @@ class ScopePostprocessService:
         merged_scopes = self.__merge_consecutive_scopes(
             merged_scopes,
             token_index_dict,
-            schema_scope_constraints,
             schema_scope_dict,
         )
 
         merged_scopes = self.__merge_equal_scopes(merged_scopes)
-        logging.info(sorted(merged_scopes, key=lambda x: x["id"]))
-        return sorted(merged_scopes, key=lambda x: x["id"])
+        merged_scopes = sorted(
+            merged_scopes,
+            key=lambda x: (
+                x["startTokenDocumentIndex"],
+                -x["endTokenDocumentIndex"],
+                x["parent_scope_id"],
+            ),
+        )
+        logging.info(merged_scopes)
+        return merged_scopes
 
-    def __extend_child_scopes(self, scope_recommendations):
+    def extend_child_scopes(self, scope_recommendations):
+        # Rule: All tokens have to be covered on leaf level
         parent_children_dict = {
             scope_recommendation["id"]: []
             for scope_recommendation in scope_recommendations
@@ -100,19 +107,10 @@ class ScopePostprocessService:
         self,
         scope_recommendations,
         token_index_dict,
-        schema_scope_constraints,
         schema_scope_dict,
     ):
+        # Rule: merge scopes, when horizontal merging is allowed
         merged_scopes = []
-
-        merging_allowed = dict()
-        for schema_scope_constraint in schema_scope_constraints:
-            merging_allowed[
-                (
-                    schema_scope_constraint["parent_type"]["type"],
-                    schema_scope_constraint["child_type"]["type"],
-                )
-            ] = schema_scope_constraint["merge_consecutive_children"]
 
         merged_scope_id_mapping = dict()
         parent_children_dict = {
@@ -121,15 +119,10 @@ class ScopePostprocessService:
         }
         parent_children_dict[None] = []
 
-        parent_type_dict = {None: "root"}
-
         for scope_recommendation in scope_recommendations:
             parent_children_dict[scope_recommendation["parent_scope_id"]].append(
                 scope_recommendation
             )
-            parent_type_dict[scope_recommendation["id"]] = scope_recommendation[
-                "scope_type"
-            ]
 
         for key in parent_children_dict:
             if len(parent_children_dict[key]) == 0:
@@ -146,9 +139,7 @@ class ScopePostprocessService:
             else:
                 for scope in parent_children_dict[key][1:]:
                     if (
-                        merging_allowed.get(
-                            (parent_type_dict.get(key), scope["scope_type"])
-                        )
+                        schema_scope_dict[scope["scope_type"]]["horizontal_merging"]
                         and scope["scope_type"] == merged["scope_type"]
                         and scope["startTokenDocumentIndex"]
                         == merged["endTokenDocumentIndex"] + 1
@@ -189,9 +180,9 @@ class ScopePostprocessService:
         return merged_scopes
 
     def __move_up_incorrect_scopes(
-        self, scope_recommendations, schema_scope_constraint_dict
+        self, scope_recommendations, schema_scope_constraint_dict, schema_scope_dict
     ):
-
+        # Rule: replace parent with children if parent-child-relation is not allowed or vertical scope merging is allowed
         recommendation_id_dict = dict()
         for scope_recommendation in scope_recommendations:
             recommendation_id_dict[scope_recommendation["id"]] = scope_recommendation
@@ -218,8 +209,11 @@ class ScopePostprocessService:
                         not schema_scope_constraint_dict.get(
                             (parent["scope_type"], child["scope_type"])
                         )
-                        and len(parent_children_dict[child["id"]]) > 0
-                    ):
+                        or (
+                            schema_scope_dict[parent["scope_type"]]["vertical_merging"]
+                            and parent["scope_type"] == child["scope_type"]
+                        )
+                    ) and len(parent_children_dict[child["id"]]) > 0:
                         change = True
                         for child_child in parent_children_dict[child["id"]]:
                             recommendation_id_dict[child_child["id"]][
@@ -234,7 +228,7 @@ class ScopePostprocessService:
         return recommendation_id_dict.values()
 
     def __move_up_bottom_scopes(self, scope_recommendations, schema_scope_dict):
-
+        # Rule: process-irrelevant scopes can be moved up to higher tree-level, if they are the first/last scope inside a parent
         recommendation_id_dict = dict()
         for scope_recommendation in scope_recommendations:
             recommendation_id_dict[scope_recommendation["id"]] = scope_recommendation
@@ -267,7 +261,7 @@ class ScopePostprocessService:
                 first_child = parent_children_dict[key][0]
                 parent = recommendation_id_dict[key]
                 if (
-                    not schema_scope_dict[first_child["scope_type"]]["procedural"]
+                    not schema_scope_dict[first_child["scope_type"]]["process_relevant"]
                     and first_child["startTokenDocumentIndex"]
                     == recommendation_id_dict[key]["startTokenDocumentIndex"]
                 ):
@@ -315,7 +309,7 @@ class ScopePostprocessService:
                 last_child = parent_children_dict[key][-1]
                 parent = recommendation_id_dict[key]
                 if (
-                    not schema_scope_dict[last_child["scope_type"]]["procedural"]
+                    not schema_scope_dict[last_child["scope_type"]]["process_relevant"]
                     and last_child["endTokenDocumentIndex"]
                     == recommendation_id_dict[key]["endTokenDocumentIndex"]
                 ):
@@ -329,6 +323,7 @@ class ScopePostprocessService:
     def __replace_scopes_with_missing_children(
         self, scope_recommendations, schema_scope_dict
     ):
+        # Rule: if a scope has invalid number of children, delete it and replace with the children
         recommendation_id_dict = dict()
         for scope_recommendation in scope_recommendations:
             recommendation_id_dict[scope_recommendation["id"]] = scope_recommendation
@@ -349,10 +344,23 @@ class ScopePostprocessService:
             for key in list(parent_children_dict.keys()):
                 if len(parent_children_dict[key]) == 0 or key is None:
                     continue
+                count_procedural_children = 0
+                for child in parent_children_dict[key]:
+                    if schema_scope_dict[child["scope_type"]]["process_relevant"]:
+                        count_procedural_children += 1
 
                 parent = recommendation_id_dict[key]
-                if schema_scope_dict[parent["scope_type"]]["minimum_children"] > len(
-                    parent_children_dict[key]
+                if schema_scope_dict[parent["scope_type"]][
+                    "minimum_children_process_relevant"
+                ] > count_procedural_children or (
+                    schema_scope_dict[parent["scope_type"]][
+                        "maximum_children_process_relevant"
+                    ]
+                    is not None
+                    and count_procedural_children
+                    > schema_scope_dict[parent["scope_type"]][
+                        "maximum_children_process_relevant"
+                    ]
                 ):
                     change = True
                     for child in parent_children_dict[key]:
@@ -364,6 +372,7 @@ class ScopePostprocessService:
         return recommendation_id_dict.values()
 
     def __merge_equal_scopes(self, merged_scopes):
+        # Rule: If two scopes are equal regarding type and token range, merge them
         scope_id_dict = dict()
         parent_children_dict = defaultdict(list)
         for merged_scope in merged_scopes:

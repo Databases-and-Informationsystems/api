@@ -600,6 +600,78 @@ class ScopeService:
 
         combo_trees = []
         for combination in all_combinations:
+            compare_tree = copy.deepcopy(comp_doc_edit)
+            for scope in combination:
+                parent = self.__get_scope_in_tree(
+                    compare_tree, scope["parent_scope_id"]
+                )
+                new_children = []
+                for child in parent["children"]:
+                    # case 1: child is completely inside scope => remove child
+                    if (
+                        child["token_start"]["document_index"]
+                        >= scope["token_start"]["document_index"]
+                        and child["token_end"]["document_index"]
+                        <= scope["token_end"]["document_index"]
+                    ):
+                        continue
+
+                    # case 2: child starts inside scope => adjust start
+                    elif (
+                        scope["token_start"]["document_index"]
+                        <= child["token_start"]["document_index"]
+                        <= scope["token_end"]["document_index"]
+                    ):
+                        continue
+
+                    # case 3: scope is completely inside child => remove child
+                    elif (
+                        child["token_start"]["document_index"]
+                        <= scope["token_start"]["document_index"]
+                        and child["token_end"]["document_index"]
+                        >= scope["token_end"]["document_index"]
+                    ):
+                        continue
+
+                    # case 4: child ends inside scope => adjust end
+                    elif (
+                        scope["token_start"]["document_index"]
+                        <= child["token_end"]["document_index"]
+                        <= scope["token_end"]["document_index"]
+                    ):
+                        continue
+                    else:
+                        new_children.append(child)
+
+                    parent["children"] = new_children
+                parent["children"].append(scope)
+            compare_tree, violations = (
+                self.scope_postprocess_service.extend_child_scopes(
+                    self.__tree_to_flat(compare_tree)
+                )
+            )
+            if violations == 0:
+                combo_trees.append(compare_tree)
+        return combo_trees
+
+    def get_scope_combinations_v1(self, ref_doc_edit_id, comp_doc_edit_id, tokens):
+        ref_doc_edit = self.get_scope_tree_by_document_edit_id(ref_doc_edit_id)
+        comp_doc_edit = self.get_scope_tree_by_document_edit_id(comp_doc_edit_id)
+
+        ambiguous_scopes = self.__get_ambiguous_subtrees(ref_doc_edit, comp_doc_edit)
+
+        token_index_dict = dict()
+        for token in tokens:
+            token_index_dict[token["document_index"]] = token["id"]
+
+        all_combinations = []
+        for r in range(1, len(ambiguous_scopes)):
+            all_combinations.extend(itertools.combinations(ambiguous_scopes, r))
+
+        all_combinations = [list(comb) for comb in all_combinations]
+
+        combo_trees = []
+        for combination in all_combinations:
             invalid_combination = False
             compare_tree = copy.deepcopy(comp_doc_edit)
             for scope in combination:
@@ -682,7 +754,7 @@ class ScopeService:
                 parent["children"] = new_children
                 parent["children"].append(scope)
             if not invalid_combination:
-                compare_tree = self.scope_postprocess_service.extend_child_scopes(
+                compare_tree, _ = self.scope_postprocess_service.extend_child_scopes(
                     self.__tree_to_flat(compare_tree)
                 )
                 combo_trees.append(compare_tree)
@@ -695,6 +767,8 @@ class ScopeService:
             cur_scope["schema_scope_id"] = cur_scope["schema_scope"]["id"]
             cur_scope["token_start_id"] = cur_scope["token_start"]["id"]
             cur_scope["token_end_id"] = cur_scope["token_end"]["id"]
+            cur_scope["startTokenDocumentIndex"] = cur_scope["token_start"]["id"]
+            cur_scope["endTokenDocumentIndex"] = cur_scope["token_end"]["id"]
             scopes.append(cur_scope)
 
             for child in cur_scope.get("children", []):

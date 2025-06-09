@@ -406,7 +406,11 @@ class DocumentRecommendationService:
         scope_recommendations = response.json()
         scope_recommendations = sorted(
             scope_recommendations,
-            key=lambda x: (x["startTokenDocumentIndex"], -x["endTokenDocumentIndex"]),
+            key=lambda x: (
+                x["startTokenDocumentIndex"],
+                -x["endTokenDocumentIndex"],
+                x["id"],
+            ),
         )
         return scope_recommendations
 

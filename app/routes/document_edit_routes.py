@@ -219,3 +219,25 @@ class ScopeCombinationsQueryResource(DocumentEditBaseRoute):
             user_id, document_edit_id, compare_document_edit_id
         )
         return response
+
+
+@ns.route("/combinations")
+@ns.response(403, "Authorization required")
+@ns.response(404, "Data not found")
+class ScopeCombinationsCreateResource(DocumentEditBaseRoute):
+
+    def post(self):
+        """
+        Create document edits of combinations of scope interpretations
+        """
+        user_id = self.user_service.get_logged_in_user_id()
+
+        interpretations = request.get_json()["interpretations"]
+        store = request.args.get("store")
+        similarity = request.args.get("similarity")
+
+        document_id = request.args.get("document_id")
+        response = self.service.compute_scope_combinations(
+            user_id, document_id, interpretations, store, similarity
+        )
+        return response

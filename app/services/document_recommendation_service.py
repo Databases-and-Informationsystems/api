@@ -412,7 +412,9 @@ class DocumentRecommendationService:
                 x["id"],
             ),
         )
-        return scope_recommendations
+        return self.map_recommendations_to_scopes(
+            scope_recommendations, tokens, schema_scopes
+        )
 
     def get_scope_recommendation_branches(
         self,
@@ -454,7 +456,23 @@ class DocumentRecommendationService:
             logging.info(response.text)
             raise BadRequest("Failed to fetch scope recommendations: " + response.text)
         scope_recommendations = response.json()
-        return scope_recommendations
+        return self.map_recommendations_to_scopes(
+            scope_recommendations, tokens, schema_scopes
+        )
+
+    def map_recommendations_to_scopes(self, recommendations, tokens, schema_scopes):
+        token_dict = {t["document_index"]: t for t in tokens}
+        schema_scope_dict = {s["type"]: s for s in schema_scopes}
+        return [
+            {
+                "id": r["id"],
+                "parent_scope_id": r.get("parent_scope_id"),
+                "schema_scope": schema_scope_dict[r["scope_type"]],
+                "token_start": token_dict[r["startTokenDocumentIndex"]],
+                "token_end": token_dict[r["endTokenDocumentIndex"]],
+            }
+            for r in recommendations
+        ]
 
 
 document_recommendation_service = DocumentRecommendationService(

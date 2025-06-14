@@ -1,6 +1,8 @@
 import logging
 from collections import defaultdict
 
+from app.file_logger import logger
+
 
 class ScopePostprocessService:
     def postprocess_scope_tree(
@@ -9,9 +11,9 @@ class ScopePostprocessService:
         tokens,
         schema_scopes,
         schema_scope_constraints,
+        count_violations=True,
     ):
         violation_counter = _ViolationCounter()
-
         violation_counter.total_scopes = len(scope_recommendations)
 
         schema_scope_dict = dict()
@@ -20,7 +22,7 @@ class ScopePostprocessService:
 
         token_index_dict = dict()
         for token in tokens:
-            token_index_dict[token["document_index"]] = token["id"]
+            token_index_dict[token["document_index"]] = token
 
         schema_scope_constraint_dict = dict()
         for schema_scope_constraint in schema_scope_constraints:
@@ -31,70 +33,66 @@ class ScopePostprocessService:
                 )
             ] = True
 
-        violation_counter._count_scope_tree_violations(
-            scope_recommendations,
-            schema_scope_dict,
-            schema_scope_constraint_dict,
-            token_index_dict,
+        if count_violations:
+            violation_counter._count_scope_tree_violations(
+                scope_recommendations,
+                schema_scope_constraint_dict,
+                token_index_dict,
+            )
+
+        scope_recommendations = self.__add_root(
+            scope_recommendations, token_index_dict, schema_scope_dict
         )
 
-        scope_recommendations = self.__add_root(scope_recommendations, len(tokens) - 1)
+        scope_recommendations = self.__fix_tree_position(scope_recommendations)
 
-        scope_recommendations = self.__fix_tree_position(
-            scope_recommendations, schema_scope_dict
+        scope_recommendations, _ = self.extend_child_scopes(
+            scope_recommendations, token_index_dict
         )
-
-        scope_recommendations, _ = self.extend_child_scopes(scope_recommendations)
 
         scope_recommendations = self.__move_up_incorrect_scopes(
-            scope_recommendations, schema_scope_constraint_dict, schema_scope_dict
+            scope_recommendations, schema_scope_constraint_dict
         )
 
         merged_scopes = self.__merge_consecutive_scopes(
             scope_recommendations,
-            token_index_dict,
-            schema_scope_dict,
         )
-        merged_scopes = self.__replace_scopes_with_missing_children(
-            merged_scopes, schema_scope_dict
-        )
-        merged_scopes = self.__move_up_bottom_scopes(merged_scopes, schema_scope_dict)
+        merged_scopes = self.__replace_scopes_with_missing_children(merged_scopes)
+        merged_scopes = self.__move_up_bottom_scopes(merged_scopes, token_index_dict)
 
         merged_scopes = self.__merge_consecutive_scopes(
             merged_scopes,
-            token_index_dict,
-            schema_scope_dict,
         )
 
         merged_scopes = self.__merge_equal_scopes(merged_scopes)
         merged_scopes = sorted(
             merged_scopes,
             key=lambda x: (
-                x["startTokenDocumentIndex"],
-                -x["endTokenDocumentIndex"],
+                x["token_start"]["id"],
+                -x["token_end"]["id"],
                 x["id"],
             ),
         )
-        logging.info(merged_scopes)
         violation_counter.total_scopes_postprocessed = len(merged_scopes)
-
-        violation_counter._log_concept_violations()
+        if count_violations:
+            violation_counter._log_concept_violations()
 
         return merged_scopes
 
-    def __add_root(self, scope_recommendations, max_token):
+    def __add_root(self, scope_recommendations, token_index_dict, schema_scope_dict):
+        max_token = token_index_dict[max(token_index_dict.keys())]
         for scope in scope_recommendations:
-            if scope["endTokenDocumentIndex"] > max_token:
-                scope["endTokenDocumentIndex"] = max_token
-            if scope["scope_type"] == "root":
+            if scope["token_end"]["document_index"] > max_token["document_index"]:
+                scope["token_end"] = max_token
+            if scope["schema_scope"]["type"] == "root":
                 scope["parent_scope_id"] = None
                 return scope_recommendations
         root = {
             "parent_scope_id": None,
-            "startTokenDocumentIndex": 0,
-            "endTokenDocumentIndex": max_token,
+            "token_start": token_index_dict[0],
+            "token_end": max_token,
             "id": 1000 + len(scope_recommendations),
-            "scope_type": "root",
+            "schema_scope": schema_scope_dict["root"],
         }
         for scope in scope_recommendations:
             if scope["parent_scope_id"] is None or scope["parent_scope_id"] == -1:
@@ -102,18 +100,16 @@ class ScopePostprocessService:
         scope_recommendations.append(root)
         return scope_recommendations
 
-    def __fix_tree_position(self, scope_recommendations, schema_scope_dict):
+    def __fix_tree_position(self, scope_recommendations):
         # Rule: Reorder tree, so that possible parent with the closest token range is chosen as parent
         for scope in scope_recommendations:
-            best_parent = _find_best_parent(
-                scope, scope_recommendations, schema_scope_dict
-            )
+            best_parent = _find_best_parent(scope, scope_recommendations)
             if best_parent and scope.get("parent_scope_id") != best_parent["id"]:
                 scope["parent_scope_id"] = best_parent["id"]
 
         return scope_recommendations
 
-    def extend_child_scopes(self, scope_recommendations):
+    def extend_child_scopes(self, scope_recommendations, token_index_dict):
         scope_violations = 0
         # Rule: All tokens have to be covered on leaf level
         parent_children_dict = {
@@ -136,43 +132,49 @@ class ScopePostprocessService:
                 continue
             parent_children_dict[key] = sorted(
                 parent_children_dict[key],
-                key=lambda x: x["startTokenDocumentIndex"],
+                key=lambda x: x["token_start"]["document_index"],
             )
             parent = recommendation_id_dict[key]
             first_child = parent_children_dict[key][0]
             last_child = parent_children_dict[key][-1]
             if (
-                recommendation_id_dict[first_child["id"]]["startTokenDocumentIndex"]
-                < parent["startTokenDocumentIndex"]
+                recommendation_id_dict[first_child["id"]]["token_start"][
+                    "document_index"
+                ]
+                != parent["token_start"]["document_index"]
             ) or (
-                recommendation_id_dict[last_child["id"]]["endTokenDocumentIndex"]
-                > parent["endTokenDocumentIndex"]
+                recommendation_id_dict[last_child["id"]]["token_end"]["document_index"]
+                != parent["token_end"]["document_index"]
             ):
                 scope_violations += 1
-                recommendation_id_dict[first_child["id"]]["startTokenDocumentIndex"] = (
-                    parent["startTokenDocumentIndex"]
-                )
-                recommendation_id_dict[last_child["id"]]["endTokenDocumentIndex"] = (
-                    parent["endTokenDocumentIndex"]
-                )
+                recommendation_id_dict[first_child["id"]]["token_start"] = parent[
+                    "token_start"
+                ]
+                recommendation_id_dict[last_child["id"]]["token_end"] = parent[
+                    "token_end"
+                ]
 
             for i, child in enumerate(parent_children_dict[key][1:]):
                 if (
-                    recommendation_id_dict[child["id"]]["startTokenDocumentIndex"]
-                    != parent_children_dict[key][i]["endTokenDocumentIndex"] + 1
+                    recommendation_id_dict[child["id"]]["token_start"]["document_index"]
+                    != parent_children_dict[key][i]["token_end"]["document_index"] + 1
                 ):
-                    recommendation_id_dict[child["id"]]["startTokenDocumentIndex"] = (
-                        parent_children_dict[key][i]["endTokenDocumentIndex"] + 1
+                    recommendation_id_dict[child["id"]]["token_start"] = (
+                        token_index_dict[
+                            (
+                                parent_children_dict[key][i]["token_end"][
+                                    "document_index"
+                                ]
+                                + 1
+                            )
+                        ]
                     )
                     scope_violations += 1
-
         return recommendation_id_dict.values(), scope_violations
 
     def __merge_consecutive_scopes(
         self,
         scope_recommendations,
-        token_index_dict,
-        schema_scope_dict,
     ):
         # Rule: merge scopes, when horizontal merging is allowed
         merged_scopes = []
@@ -194,7 +196,7 @@ class ScopePostprocessService:
                 continue
             parent_children_dict[key] = sorted(
                 parent_children_dict[key],
-                key=lambda x: x["startTokenDocumentIndex"],
+                key=lambda x: x["token_start"]["document_index"],
             )
             merged = parent_children_dict[key][0]
             merged_scope_id_mapping[merged["id"]] = merged["id"]
@@ -204,10 +206,11 @@ class ScopePostprocessService:
             else:
                 for scope in parent_children_dict[key][1:]:
                     if (
-                        schema_scope_dict[scope["scope_type"]]["horizontal_merging"]
-                        and scope["scope_type"] == merged["scope_type"]
-                        and scope["startTokenDocumentIndex"]
-                        == merged["endTokenDocumentIndex"] + 1
+                        scope["schema_scope"]["horizontal_merging"]
+                        and scope["schema_scope"]["type"]
+                        == merged["schema_scope"]["type"]
+                        and scope["token_start"]["document_index"]
+                        == merged["token_end"]["document_index"] + 1
                     ):
                         merged_scope_id_mapping[scope["id"]] = merged["id"]
                         for s in parent_children_dict[scope["id"]]:
@@ -215,11 +218,9 @@ class ScopePostprocessService:
                         parent_children_dict[scope["id"]] = []
                         merged = {
                             "id": merged["id"],
-                            "scope_type": merged["scope_type"],
-                            "startTokenDocumentIndex": merged[
-                                "startTokenDocumentIndex"
-                            ],
-                            "endTokenDocumentIndex": scope["endTokenDocumentIndex"],
+                            "schema_scope": merged["schema_scope"],
+                            "token_start": merged["token_start"],
+                            "token_end": scope["token_end"],
                             "parent_scope_id": merged["parent_scope_id"],
                         }
                     else:
@@ -233,19 +234,10 @@ class ScopePostprocessService:
             merged_scope["parent_scope_id"] = merged_scope_id_mapping.get(
                 merged_scope["parent_scope_id"]
             )
-            merged_scope["schema_scope_id"] = schema_scope_dict[
-                merged_scope["scope_type"]
-            ]["id"]
-            merged_scope["token_start_id"] = token_index_dict[
-                merged_scope["startTokenDocumentIndex"]
-            ]
-            merged_scope["token_end_id"] = token_index_dict[
-                merged_scope["endTokenDocumentIndex"]
-            ]
         return merged_scopes
 
     def __move_up_incorrect_scopes(
-        self, scope_recommendations, schema_scope_constraint_dict, schema_scope_dict
+        self, scope_recommendations, schema_scope_constraint_dict
     ):
         # Rule: replace parent with children if parent-child-relation is not allowed or vertical scope merging is allowed
         recommendation_id_dict = dict()
@@ -272,11 +264,15 @@ class ScopePostprocessService:
                 for child in parent_children_dict[key]:
                     if (
                         not schema_scope_constraint_dict.get(
-                            (parent["scope_type"], child["scope_type"])
+                            (
+                                parent["schema_scope"]["type"],
+                                child["schema_scope"]["type"],
+                            )
                         )
                         or (
-                            schema_scope_dict[parent["scope_type"]]["vertical_merging"]
-                            and parent["scope_type"] == child["scope_type"]
+                            parent["schema_scope"]["vertical_merging"]
+                            and parent["schema_scope"]["type"]
+                            == child["schema_scope"]["type"]
                         )
                     ) and len(parent_children_dict[child["id"]]) > 0:
                         change = True
@@ -292,7 +288,7 @@ class ScopePostprocessService:
 
         return recommendation_id_dict.values()
 
-    def __move_up_bottom_scopes(self, scope_recommendations, schema_scope_dict):
+    def __move_up_bottom_scopes(self, scope_recommendations, token_index_dict):
         # Rule: process-irrelevant scopes can be moved up to higher tree-level, if they are the first/last scope inside a parent
         recommendation_id_dict = dict()
         for scope_recommendation in scope_recommendations:
@@ -316,19 +312,19 @@ class ScopePostprocessService:
                 if (
                     len(parent_children_dict[key]) == 0
                     or key is None
-                    or recommendation_id_dict[key]["scope_type"] == "root"
+                    or recommendation_id_dict[key]["schema_scope"]["type"] == "root"
                 ):
                     continue
                 parent_children_dict[key] = sorted(
                     parent_children_dict[key],
-                    key=lambda x: x["startTokenDocumentIndex"],
+                    key=lambda x: x["token_start"]["document_index"],
                 )
                 first_child = parent_children_dict[key][0]
                 parent = recommendation_id_dict[key]
                 if (
-                    not schema_scope_dict[first_child["scope_type"]]["process_relevant"]
-                    and first_child["startTokenDocumentIndex"]
-                    == recommendation_id_dict[key]["startTokenDocumentIndex"]
+                    not first_child["schema_scope"]["process_relevant"]
+                    and first_child["token_start"]["document_index"]
+                    == recommendation_id_dict[key]["token_start"]["document_index"]
                 ):
                     change = True
                     if len(parent_children_dict[key]) == 1:  # replace parent with child
@@ -342,9 +338,9 @@ class ScopePostprocessService:
                         del recommendation_id_dict[first_child["id"]]
                     else:  # move first child one layer up
                         first_child["parent_scope_id"] = parent["parent_scope_id"]
-                        parent["startTokenDocumentIndex"] = (
-                            first_child["endTokenDocumentIndex"] + 1
-                        )
+                        parent["token_start"] = token_index_dict[
+                            (first_child["token_end"]["document_index"] + 1)
+                        ]
 
         # last child
         change = True
@@ -364,30 +360,28 @@ class ScopePostprocessService:
                 if (
                     len(parent_children_dict[key]) == 0
                     or key is None
-                    or recommendation_id_dict[key]["scope_type"] == "root"
+                    or recommendation_id_dict[key]["schema_scope"]["type"] == "root"
                 ):
                     continue
                 parent_children_dict[key] = sorted(
                     parent_children_dict[key],
-                    key=lambda x: x["startTokenDocumentIndex"],
+                    key=lambda x: x["token_start"]["document_index"],
                 )
                 last_child = parent_children_dict[key][-1]
                 parent = recommendation_id_dict[key]
                 if (
-                    not schema_scope_dict[last_child["scope_type"]]["process_relevant"]
-                    and last_child["endTokenDocumentIndex"]
-                    == recommendation_id_dict[key]["endTokenDocumentIndex"]
+                    not last_child["schema_scope"]["process_relevant"]
+                    and last_child["token_end"]["document_index"]
+                    == recommendation_id_dict[key]["token_end"]["document_index"]
                 ):
                     change = True
                     last_child["parent_scope_id"] = parent["parent_scope_id"]
-                    parent["endTokenDocumentIndex"] = (
-                        last_child["startTokenDocumentIndex"] - 1
-                    )
+                    parent["token_end"] = token_index_dict[
+                        (last_child["token_start"]["document_index"] - 1)
+                    ]
         return recommendation_id_dict.values()
 
-    def __replace_scopes_with_missing_children(
-        self, scope_recommendations, schema_scope_dict
-    ):
+    def __replace_scopes_with_missing_children(self, scope_recommendations):
         # Rule: if a scope has invalid number of children, delete it and replace with the children
         recommendation_id_dict = dict()
         for scope_recommendation in scope_recommendations:
@@ -411,21 +405,17 @@ class ScopePostprocessService:
                     continue
                 count_procedural_children = 0
                 for child in parent_children_dict[key]:
-                    if schema_scope_dict[child["scope_type"]]["process_relevant"]:
+                    if child["schema_scope"]["process_relevant"]:
                         count_procedural_children += 1
 
                 parent = recommendation_id_dict[key]
-                if schema_scope_dict[parent["scope_type"]][
+                if parent["schema_scope"][
                     "minimum_children_process_relevant"
                 ] > count_procedural_children or (
-                    schema_scope_dict[parent["scope_type"]][
-                        "maximum_children_process_relevant"
-                    ]
+                    parent["schema_scope"]["maximum_children_process_relevant"]
                     is not None
                     and count_procedural_children
-                    > schema_scope_dict[parent["scope_type"]][
-                        "maximum_children_process_relevant"
-                    ]
+                    > parent["schema_scope"]["maximum_children_process_relevant"]
                 ):
                     change = True
                     for child in parent_children_dict[key]:
@@ -449,14 +439,17 @@ class ScopePostprocessService:
             if len(parent_children_dict[key]) != 1 or key is None:
                 continue
             scope = parent_children_dict[key][0]
-            if scope_id_dict[key]["scope_type"] != scope["scope_type"]:
+            if (
+                scope_id_dict[key]["schema_scope"]["type"]
+                != scope["schema_scope"]["type"]
+            ):
                 continue
 
             if (
-                scope_id_dict[key]["startTokenDocumentIndex"]
-                == scope["startTokenDocumentIndex"]
-                and scope_id_dict[key]["endTokenDocumentIndex"]
-                == scope["endTokenDocumentIndex"]
+                scope_id_dict[key]["token_start"]["document_index"]
+                == scope["token_start"]["document_index"]
+                and scope_id_dict[key]["token_end"]["document_index"]
+                == scope["token_end"]["document_index"]
             ):
                 for child_scope in parent_children_dict[scope["id"]]:
                     child_scope["parent_scope_id"] = scope["parent_scope_id"]
@@ -504,12 +497,11 @@ class _ViolationCounter:
             - total_scopes: {self.total_scopes}
             - total_scopes_postprocessed: {self.total_scopes_postprocessed}
             """
-        logging.info(log_message)
+        logger.info(log_message)
 
     def _count_scope_tree_violations(
         self,
         scope_recommendations,
-        schema_scope_dict,
         schema_scope_constraint_dict,
         token_index_dict,
     ):
@@ -536,20 +528,18 @@ class _ViolationCounter:
         # Check if root exists
         self.root_missing = True
         for scope in scope_recommendations:
-            if scope["scope_type"] == "root":
+            if scope["schema_scope"]["type"] == "root":
                 self.root_missing = False
                 break
 
         # Check if max token is exceeded
         for scope in scope_recommendations:
-            if scope["endTokenDocumentIndex"] >= len(token_index_dict):
+            if scope["token_end"]["document_index"] >= len(token_index_dict):
                 self.max_token_exceeded += 1
 
         # Count how often scope is at wrong position in tree
         for scope in scope_recommendations:
-            best_parent = _find_best_parent(
-                scope, scope_recommendations, schema_scope_dict
-            )
+            best_parent = _find_best_parent(scope, scope_recommendations)
             if best_parent and scope.get("parent_scope_id") != best_parent["id"]:
                 self.wrong_tree_position += 1
 
@@ -559,38 +549,45 @@ class _ViolationCounter:
                 continue
             parent_children_dict[key] = sorted(
                 parent_children_dict[key],
-                key=lambda x: x["startTokenDocumentIndex"],
+                key=lambda x: x["token_start"]["document_index"],
             )
             parent = recommendation_id_dict[key]
             first_child = parent_children_dict[key][0]
             last_child = parent_children_dict[key][-1]
             if (
-                recommendation_id_dict[first_child["id"]]["startTokenDocumentIndex"]
-                < parent["startTokenDocumentIndex"]
+                recommendation_id_dict[first_child["id"]]["token_start"][
+                    "document_index"
+                ]
+                < parent["token_start"]["document_index"]
             ) or (
-                recommendation_id_dict[last_child["id"]]["endTokenDocumentIndex"]
-                > parent["endTokenDocumentIndex"]
+                recommendation_id_dict[last_child["id"]]["token_end"]["document_index"]
+                > parent["token_end"]["document_index"]
             ):
                 self.child_exceeding_parent += 1
 
             if (
-                recommendation_id_dict[first_child["id"]]["startTokenDocumentIndex"]
-                > parent["startTokenDocumentIndex"]
+                recommendation_id_dict[first_child["id"]]["token_start"][
+                    "document_index"
+                ]
+                > parent["token_start"]["document_index"]
             ):
                 self.first_child_later_start += 1
             if (
-                recommendation_id_dict[last_child["id"]]["endTokenDocumentIndex"]
-                < parent["endTokenDocumentIndex"]
+                recommendation_id_dict[last_child["id"]]["token_end"]["document_index"]
+                < parent["token_end"]["document_index"]
             ):
                 self.last_child_earlier_end += 1
             for i, child in enumerate(parent_children_dict[key][1:]):
                 if (
-                    recommendation_id_dict[child["id"]]["startTokenDocumentIndex"]
-                    != parent_children_dict[key][i]["endTokenDocumentIndex"] + 1
+                    recommendation_id_dict[child["id"]]["token_start"]["document_index"]
+                    != parent_children_dict[key][i]["token_end"]["document_index"] + 1
                 ):
                     if (
-                        recommendation_id_dict[child["id"]]["startTokenDocumentIndex"]
-                        > parent_children_dict[key][i]["endTokenDocumentIndex"] + 1
+                        recommendation_id_dict[child["id"]]["token_start"][
+                            "document_index"
+                        ]
+                        > parent_children_dict[key][i]["token_end"]["document_index"]
+                        + 1
                     ):
                         self.gaps_in_between += 1
                     else:
@@ -601,16 +598,16 @@ class _ViolationCounter:
                 continue
             parent_children_dict[key] = sorted(
                 parent_children_dict[key],
-                key=lambda x: x["startTokenDocumentIndex"],
+                key=lambda x: x["token_start"]["document_index"],
             )
 
             for i, scope in enumerate(parent_children_dict[key][1:]):
                 if (
-                    schema_scope_dict[scope["scope_type"]]["horizontal_merging"]
-                    and scope["scope_type"]
-                    == parent_children_dict[key][i]["scope_type"]
-                    and scope["startTokenDocumentIndex"]
-                    == parent_children_dict[key][i]["endTokenDocumentIndex"] + 1
+                    scope["schema_scope"]["horizontal_merging"]
+                    and scope["schema_scope"]["type"]
+                    == parent_children_dict[key][i]["schema_scope"]["type"]
+                    and scope["token_start"]["document_index"]
+                    == parent_children_dict[key][i]["token_end"]["document_index"] + 1
                 ):
                     self.horizontal_unmerged += 1
 
@@ -622,16 +619,16 @@ class _ViolationCounter:
             for child in parent_children_dict[key]:
 
                 if (
-                    schema_scope_dict[parent["scope_type"]]["vertical_merging"]
-                    and parent["scope_type"] == child["scope_type"]
+                    parent["schema_scope"]["vertical_merging"]
+                    and parent["schema_scope"]["type"] == child["schema_scope"]["type"]
                 ):
                     self.vertical_unmerged += 1
                 elif not schema_scope_constraint_dict.get(
-                    (parent["scope_type"], child["scope_type"])
+                    (parent["schema_scope"]["type"], child["schema_scope"]["type"])
                 ):
                     if (
-                        parent["scope_type"] == "root"
-                        and child["scope_type"] == "sequential"
+                        parent["schema_scope"]["type"] == "root"
+                        and child["schema_scope"]["type"] == "sequential"
                     ):
                         self.vertical_unmerged += 1
                     else:
@@ -641,68 +638,60 @@ class _ViolationCounter:
                 continue
             count_procedural_children = 0
             for child in parent_children_dict[key]:
-                if schema_scope_dict[child["scope_type"]]["process_relevant"]:
+                if child["schema_scope"]["process_relevant"]:
                     count_procedural_children += 1
             parent = recommendation_id_dict[key]
             if (
-                schema_scope_dict[parent["scope_type"]][
-                    "minimum_children_process_relevant"
-                ]
+                parent["schema_scope"]["minimum_children_process_relevant"]
                 > count_procedural_children
             ):
                 self.too_few_children += 1
             elif (
-                schema_scope_dict[parent["scope_type"]][
-                    "maximum_children_process_relevant"
-                ]
-                is not None
+                parent["schema_scope"]["maximum_children_process_relevant"] is not None
                 and count_procedural_children
-                > schema_scope_dict[parent["scope_type"]][
-                    "maximum_children_process_relevant"
-                ]
+                > parent["schema_scope"]["maximum_children_process_relevant"]
             ):
                 self.too_many_children += 1
 
         return recommendation_id_dict.values()
 
 
-def _find_best_parent(scope, scope_recommendations, schema_scope_dict):
+def _find_best_parent(scope, scope_recommendations):
     best_parent = None
     parent = None
     for scope_rec in scope_recommendations:
         if scope["parent_scope_id"] == scope_rec["id"]:
             parent = scope_rec
     if parent is not None and (
-        parent["startTokenDocumentIndex"] >= scope["startTokenDocumentIndex"]
-        or parent["endTokenDocumentIndex"] <= scope["endTokenDocumentIndex"]
+        parent["token_start"]["document_index"]
+        >= scope["token_start"]["document_index"]
+        or parent["token_end"]["document_index"] <= scope["token_end"]["document_index"]
     ):
         # Child exceeding parent => other violation
         return None
     for possible_parent in scope_recommendations:
         if (
             possible_parent["id"] == scope["id"]
-            or schema_scope_dict[possible_parent["scope_type"]].get(
-                "maximum_children_process_relevant"
-            )
+            or possible_parent["schema_scope"].get("maximum_children_process_relevant")
             == 0
         ):
             continue
 
         if (
-            possible_parent["startTokenDocumentIndex"]
-            <= scope["startTokenDocumentIndex"]
-            and possible_parent["endTokenDocumentIndex"]
-            >= scope["endTokenDocumentIndex"]
+            possible_parent["token_start"]["document_index"]
+            <= scope["token_start"]["document_index"]
+            and possible_parent["token_end"]["document_index"]
+            >= scope["token_end"]["document_index"]
         ):
 
             if not best_parent or (
                 (
-                    possible_parent["endTokenDocumentIndex"]
-                    - possible_parent["startTokenDocumentIndex"]
+                    possible_parent["token_end"]["document_index"]
+                    - possible_parent["token_start"]["document_index"]
                 )
                 < (
-                    best_parent["endTokenDocumentIndex"]
-                    - best_parent["startTokenDocumentIndex"]
+                    best_parent["token_end"]["document_index"]
+                    - best_parent["token_start"]["document_index"]
                 )
             ):
                 best_parent = possible_parent

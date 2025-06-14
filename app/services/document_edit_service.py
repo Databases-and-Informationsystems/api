@@ -1,4 +1,8 @@
+import copy
+import json
 import logging
+import os
+from datetime import datetime
 
 from werkzeug.exceptions import BadRequest, NotFound
 
@@ -729,7 +733,9 @@ class DocumentEditService:
         ]
 
         combos = self.scope_service.get_scope_combinations(
-            ref_doc_edit_id, comp_doc_edit_id, tokens
+            self.scope_service.get_scope_tree_by_document_edit_id(ref_doc_edit_id),
+            self.scope_service.get_scope_tree_by_document_edit_id(comp_doc_edit_id),
+            tokens,
         )
 
         logging.info(len(combos))
@@ -740,10 +746,102 @@ class DocumentEditService:
                 doc_edit["id"], combo
             )
             saved_combos.append(scope_tree)
-            logging.info(
-                self.scope_service.get_scope_list_by_document_edit_id(doc_edit["id"])
-            )
         return saved_combos
+
+    def compute_scope_combinations(
+        self, user_id, document_id, interpretations, store, similarity
+    ):
+        all_combos = []
+        tokens = self.token_service.get_tokens_by_document(document_id)["tokens"]
+        schema = self.schema_service.get_schema_by_document(document_id)
+        schema_scopes = self.schema_scope_service.get_schema_scopes_by_schema_id(
+            schema.id
+        )
+        schema_scope_constraints = (
+            self.schema_scope_service.get_schema_scope_constraints_by_schema_id(
+                schema.id
+            )
+        )
+        interpretations = [
+            self.document_recommendation_service.map_recommendations_to_scopes(
+                i, tokens, schema_scopes
+            )
+            for i in interpretations
+        ]
+        interpretation_tree = []
+        for i, interpretation in enumerate(interpretations):
+            # Avoid same scope ids when building combinations
+            for scope in interpretation:
+                scope["id"] += 1000 * i
+                if scope["parent_scope_id"]:
+                    scope["parent_scope_id"] += 1000 * i
+
+            interpretation_tree.append(self.scope_service.rec_to_tree(interpretation))
+        for i, ref in enumerate(interpretation_tree):
+            for comp in interpretation_tree[i:]:
+                if not ref == comp:
+                    combos = self.scope_service.get_scope_combinations(
+                        copy.deepcopy(ref), copy.deepcopy(comp), tokens
+                    )
+                    for combo in combos:
+                        all_combos.append(combo)
+
+        postprocessed_interpretations = []
+        for ref in interpretations:
+            postprocessed_interpretations.append(
+                self.scope_service.scope_postprocess_service.postprocess_scope_tree(
+                    ref,
+                    tokens,
+                    schema_scopes,
+                    schema_scope_constraints,
+                    count_violations=False,
+                )
+            )
+        postprocessed_combinations = []
+        for combo in all_combos:
+            postprocessed_combinations.append(
+                self.scope_service.scope_postprocess_service.postprocess_scope_tree(
+                    combo,
+                    tokens,
+                    schema_scopes,
+                    schema_scope_constraints,
+                    count_violations=False,
+                )
+            )
+
+        json_object = {
+            "interpretations": [
+                self.scope_service.scopes_to_output(i)
+                for i in postprocessed_interpretations
+            ],
+            "combinations": [
+                self.scope_service.scopes_to_output(c)
+                for c in postprocessed_combinations
+            ],
+        }
+        base_dir = os.path.abspath(os.path.dirname(__file__))
+        filename = datetime.now().strftime("%Y%m%d_%H%M%S")
+        file_path = os.path.join(base_dir, f"/logs/combinations/{filename}.json")
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(json_object, f)
+        logging.info(f"Combinations: {len(all_combos)}")
+        if store:
+            for combo in postprocessed_combinations:
+                doc_edit = self.create_document_edit(user_id, document_id)
+                scope_tree = self.scope_service.save_scope_recommendations(
+                    doc_edit["id"], combo
+                )
+        if similarity:
+            for interpretation in postprocessed_interpretations:
+                for combo in postprocessed_combinations:
+                    sim = self.scope_service.scope_tree_similarity_obj(
+                        self.scope_service.rec_to_tree(interpretation),
+                        self.scope_service.rec_to_tree(combo),
+                        tokens,
+                        schema_scopes,
+                    )
+                    logging.info(sim["total_similarity"])
 
 
 document_edit_service = DocumentEditService(

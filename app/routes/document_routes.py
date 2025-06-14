@@ -2,6 +2,8 @@ import requests
 from flask_restx import Namespace
 from werkzeug.exceptions import NotFound, InternalServerError
 from flask import request, current_app
+
+from app.file_logger import logger
 from app.services.document_service import document_service, DocumentService
 from app.dtos import (
     document_output_dto,
@@ -317,7 +319,7 @@ class ScopeInterpretationResource(DocumentBaseRoute):
         """
         user_id = self.user_service.get_logged_in_user_id()
         self.user_service.check_user_document_accessible(user_id, document_id)
-
+        logger.info(request.args)
         model = request.args.get("model")
         num_interpretations = request.args.get("num_interpretations")
         if num_interpretations:

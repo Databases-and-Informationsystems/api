@@ -1,9 +1,8 @@
-import logging
-
 from flask import request
 from flask_restx import Namespace
 
 from app.dtos import scope_create_input_dto
+from app.file_logger import logger
 from app.routes.base_routes import AuthorizedBaseRoute
 from app.services.scope_service import scope_service, ScopeService
 from app.dtos import (
@@ -125,7 +124,7 @@ class ScopeRecommendationResource(ScopeRecommendationParamBaseRoute):
         """
         user_id = self.user_service.get_logged_in_user_id()
         self.user_service.check_user_document_edit_accessible(user_id, document_edit_id)
-
+        logger.info(request.args)
         model = request.args.get("model")
         return self.service.get_scope_recommendations(
             document_edit_id, model, request.args
@@ -145,7 +144,7 @@ class ScopeRecommendationResource(ScopeRecommendationParamBaseRoute):
         """
         user_id = self.user_service.get_logged_in_user_id()
         self.user_service.check_user_document_edit_accessible(user_id, document_edit_id)
-
+        logger.info(request.args)
         model = request.args.get("model")
         return self.service.get_scope_recommendations_branches(
             document_edit_id, model, request.args

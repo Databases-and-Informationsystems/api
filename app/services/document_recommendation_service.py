@@ -375,6 +375,7 @@ class DocumentRecommendationService:
         model=None,
         req_params=None,
         interpretations=None,
+        map_to_scopes=True,
     ):
         url = current_app.config.get("SCOPE_URL") + "/scopes"
         headers = {
@@ -412,8 +413,13 @@ class DocumentRecommendationService:
                 x["id"],
             ),
         )
-        return self.map_recommendations_to_scopes(
-            scope_recommendations, tokens, schema_scopes
+
+        return (
+            self.map_recommendations_to_scopes(
+                scope_recommendations, tokens, schema_scopes
+            )
+            if map_to_scopes
+            else scope_recommendations
         )
 
     def get_scope_recommendation_branches(
@@ -456,6 +462,12 @@ class DocumentRecommendationService:
             logging.info(response.text)
             raise BadRequest("Failed to fetch scope recommendations: " + response.text)
         scope_recommendations = response.json()
+        scope_ids = [
+            scope_recommendation["id"] for scope_recommendation in scope_recommendations
+        ]
+        for leaf in leafs:
+            if leaf["id"] not in scope_ids:
+                scope_recommendations.append(leaf)
         return self.map_recommendations_to_scopes(
             scope_recommendations, tokens, schema_scopes
         )
@@ -463,13 +475,14 @@ class DocumentRecommendationService:
     def map_recommendations_to_scopes(self, recommendations, tokens, schema_scopes):
         token_dict = {t["document_index"]: t for t in tokens}
         schema_scope_dict = {s["type"]: s for s in schema_scopes}
+        max_token = token_dict[len(token_dict) - 1]
         return [
             {
                 "id": r["id"],
                 "parent_scope_id": r.get("parent_scope_id"),
                 "schema_scope": schema_scope_dict[r["scope_type"]],
-                "token_start": token_dict[r["startTokenDocumentIndex"]],
-                "token_end": token_dict[r["endTokenDocumentIndex"]],
+                "token_start": token_dict.get(r["startTokenDocumentIndex"], max_token),
+                "token_end": token_dict.get(r["endTokenDocumentIndex"], max_token),
             }
             for r in recommendations
         ]

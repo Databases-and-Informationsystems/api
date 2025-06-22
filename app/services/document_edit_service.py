@@ -749,7 +749,13 @@ class DocumentEditService:
         return saved_combos
 
     def compute_scope_combinations(
-        self, user_id, document_id, interpretations, store, similarity
+        self,
+        user_id,
+        document_id,
+        interpretations,
+        store,
+        similarity,
+        store_interpretations,
     ):
         all_combos = []
         tokens = self.token_service.get_tokens_by_document(document_id)["tokens"]
@@ -809,14 +815,60 @@ class DocumentEditService:
                 )
             )
 
+        logging.info(f"Combinations: {len(all_combos)}")
+        doc_edit_ids = []
+
+        unique_combos = []
+        for i, ref_combo in enumerate(postprocessed_combinations):
+            unique = True
+            for comp_combo in postprocessed_combinations[i:]:
+                if not ref_combo == comp_combo:
+                    sim = self.scope_service.scope_tree_similarity_obj(
+                        self.scope_service.rec_to_tree(ref_combo),
+                        self.scope_service.rec_to_tree(comp_combo),
+                        tokens,
+                        schema_scopes,
+                    )
+                    if sim["total_similarity"] == 1:
+                        unique = False
+                        break
+            if unique:
+                unique_combos.append(ref_combo)
+
+        logging.info(f"Unique Combinations: {len(unique_combos)}")
+
+        if store_interpretations:
+            for interpretation in postprocessed_interpretations:
+                doc_edit = self.create_document_edit(user_id, document_id)
+                self.scope_service.save_scope_recommendations(
+                    doc_edit["id"], interpretation
+                )
+                doc_edit_ids.append(doc_edit["id"])
+
+        if store:
+            for combo in unique_combos:
+                doc_edit = self.create_document_edit(user_id, document_id)
+                self.scope_service.save_scope_recommendations(doc_edit["id"], combo)
+                doc_edit_ids.append(doc_edit["id"])
+
+        if similarity:
+            for interpretation in postprocessed_interpretations:
+                for combo in unique_combos:
+                    sim = self.scope_service.scope_tree_similarity_obj(
+                        self.scope_service.rec_to_tree(interpretation),
+                        self.scope_service.rec_to_tree(combo),
+                        tokens,
+                        schema_scopes,
+                    )
+                    logging.info(sim["total_similarity"])
+
         json_object = {
             "interpretations": [
                 self.scope_service.scopes_to_output(i)
                 for i in postprocessed_interpretations
             ],
             "combinations": [
-                self.scope_service.scopes_to_output(c)
-                for c in postprocessed_combinations
+                self.scope_service.scopes_to_output(c) for c in unique_combos
             ],
         }
         base_dir = os.path.abspath(os.path.dirname(__file__))
@@ -825,23 +877,8 @@ class DocumentEditService:
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
         with open(file_path, "w", encoding="utf-8") as f:
             json.dump(json_object, f)
-        logging.info(f"Combinations: {len(all_combos)}")
-        if store:
-            for combo in postprocessed_combinations:
-                doc_edit = self.create_document_edit(user_id, document_id)
-                scope_tree = self.scope_service.save_scope_recommendations(
-                    doc_edit["id"], combo
-                )
-        if similarity:
-            for interpretation in postprocessed_interpretations:
-                for combo in postprocessed_combinations:
-                    sim = self.scope_service.scope_tree_similarity_obj(
-                        self.scope_service.rec_to_tree(interpretation),
-                        self.scope_service.rec_to_tree(combo),
-                        tokens,
-                        schema_scopes,
-                    )
-                    logging.info(sim["total_similarity"])
+
+        logging.info(doc_edit_ids)
 
 
 document_edit_service = DocumentEditService(

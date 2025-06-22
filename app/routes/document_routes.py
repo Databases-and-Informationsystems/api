@@ -320,6 +320,7 @@ class ScopeInterpretationResource(DocumentBaseRoute):
         user_id = self.user_service.get_logged_in_user_id()
         self.user_service.check_user_document_accessible(user_id, document_id)
         logger.info(request.args)
+        logger.info(f"document_id: {document_id}")
         model = request.args.get("model")
         num_interpretations = request.args.get("num_interpretations")
         if num_interpretations:

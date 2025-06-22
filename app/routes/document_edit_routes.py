@@ -235,9 +235,15 @@ class ScopeCombinationsCreateResource(DocumentEditBaseRoute):
         interpretations = request.get_json()["interpretations"]
         store = request.args.get("store")
         similarity = request.args.get("similarity")
+        store_interpretations = request.args.get("store_interpretations")
 
         document_id = request.args.get("document_id")
         response = self.service.compute_scope_combinations(
-            user_id, document_id, interpretations, store, similarity
+            user_id,
+            document_id,
+            interpretations,
+            store,
+            similarity,
+            store_interpretations,
         )
         return response

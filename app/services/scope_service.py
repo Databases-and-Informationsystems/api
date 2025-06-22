@@ -250,6 +250,24 @@ class ScopeService:
             "similarity_per_scope": similarity_per_scope,
         }
 
+    def scope_tree_similarity_obj_branches(self, ref, comp):
+        min_len = min(len(ref), len(comp))
+        similarity_matrix = np.zeros((len(ref), len(comp)))
+        for i, r in enumerate(ref):
+            for j, c in enumerate(comp):
+                similarity_matrix[i, j] = self.__scope_similarity_branches(r, c)
+        row_ind, col_ind = linear_sum_assignment(-similarity_matrix)
+        total_sim = similarity_matrix[row_ind, col_ind].sum()
+        logging.info(total_sim / min_len)
+
+        logging.info(total_sim / len(ref))
+        logging.info(total_sim / len(comp))
+        logging.info(len(ref))
+
+        return {
+            "total_similarity": total_sim / min_len,
+        }
+
     def scope_tree_similarity(
         self, reference_document_edit_id, comparison_document_edit_id
     ):
@@ -287,6 +305,90 @@ class ScopeService:
         return self.scope_tree_similarity_obj(
             reference_tree_scopes, comparison_tree_scopes, tokens, schema_scopes
         )
+
+    def scope_tree_similarity_list(
+        self, reference_document_edit_id_list, comparison_document_edit_id_list
+    ):
+        first_document_edit_id = self.__scope_repository.get_object_by_id(
+            DocumentEdit, reference_document_edit_id_list[0]
+        )
+
+        tokens = self.token_service.get_tokens_by_document(
+            first_document_edit_id.document_id
+        )["tokens"]
+
+        schema = self.schema_service.get_schema_by_document_edit(
+            first_document_edit_id.id
+        )
+
+        schema_scopes = self.schema_scope_service.get_schema_scopes_by_schema_id(
+            schema.id
+        )
+
+        reference_tree_scopes_list = [
+            self.get_scope_tree_by_document_edit_id(
+                reference_document_edit_id
+            )  # self.get_scope_list_by_document_edit_id
+            for reference_document_edit_id in reference_document_edit_id_list
+        ]
+        comparison_tree_scopes_list = [
+            self.get_scope_tree_by_document_edit_id(
+                comparison_document_edit_id
+            )  # self.get_scope_list_by_document_edit_id
+            for comparison_document_edit_id in comparison_document_edit_id_list
+        ]
+
+        similarity_matrix = np.zeros(
+            (
+                len(reference_document_edit_id_list),
+                len(comparison_document_edit_id_list),
+            )
+        )
+        for i, r in enumerate(reference_tree_scopes_list):
+            for j, c in enumerate(comparison_tree_scopes_list):
+                similarity_matrix[i, j] = self.scope_tree_similarity_obj(
+                    r, c, tokens, schema_scopes
+                )[  # self.scope_tree_similarity_obj_branches(r, c)
+                    "total_similarity"
+                ]
+
+        max_per_row = np.max(
+            similarity_matrix, axis=1
+        )  # max similarity of human to any llm annotation
+        max_per_column = np.max(
+            similarity_matrix, axis=0
+        )  # max similarity of llm to any human annotation
+
+        logging.info(f"Diversity: {max_per_row}, Average: {np.mean(max_per_row)}")
+        logging.info(f"Quality: {max_per_column}, Average: {np.mean(max_per_column)}")
+        logging.info(
+            f"Overall similarity: {np.mean([np.mean(max_per_row), np.mean(max_per_column)])}"
+        )
+
+        return None
+
+    def __scope_similarity_branches(self, reference_scope, comparison_scope):
+        if reference_scope["scope_type"] != comparison_scope["scope_type"]:
+            return 0
+        reference_tokens = set(
+            range(
+                reference_scope["startTokenDocumentIndex"],
+                reference_scope["endTokenDocumentIndex"] + 1,
+            )
+        )
+        comparison_tokens = set(
+            range(
+                comparison_scope["startTokenDocumentIndex"],
+                comparison_scope["endTokenDocumentIndex"] + 1,
+            )
+        )
+
+        intersection = reference_tokens & comparison_tokens
+        union = reference_tokens | comparison_tokens
+
+        if not union:
+            return 0.0
+        return len(intersection) / len(union)
 
     def __scope_similarity(
         self, reference_scope, comparison_scope, process_relevant_schema_scope_ids
@@ -387,9 +489,12 @@ class ScopeService:
         raw_list = []
         req_params = dict(req_params)
         req_params["cache_datetime"] = 1
-        for _ in range(num_interpretations):
-            recommendations = (
-                self.document_recommendation_service.get_scope_recommendation(
+        if req_params.get("bottom_up") and req_params.get("pass_interpretations"):
+            del req_params["bottom_up"]
+            req_params["only_leafs"] = 1
+            leafs_list = []
+            for _ in range(num_interpretations):
+                leafs = self.document_recommendation_service.get_scope_recommendation(
                     schema_scopes,
                     schema_scope_constraints,
                     document_content,
@@ -397,20 +502,59 @@ class ScopeService:
                     document_id,
                     model,
                     req_params,
-                    raw_list if req_params.get("pass_interpretations") else None,
+                    leafs_list,
+                    map_to_scopes=False,
                 )
-            )
+                for _ in range(0, 2):
+                    scope_recommendation = self.document_recommendation_service.get_scope_recommendation_branches(
+                        schema_scopes,
+                        schema_scope_constraints,
+                        document_content,
+                        tokens,
+                        leafs,
+                        document_id,
+                        model,
+                        req_params,
+                        raw_list,
+                    )
+                    raw_list.append(scope_recommendation)
+                    postprocessed_recommendations = (
+                        self.scope_postprocess_service.postprocess_scope_tree(
+                            scope_recommendation,
+                            tokens,
+                            schema_scopes,
+                            schema_scope_constraints,
+                        )
+                    )
+                    interpretation_list.append(postprocessed_recommendations)
 
-            postprocessed_recommendations = (
-                self.scope_postprocess_service.postprocess_scope_tree(
-                    recommendations,
-                    tokens,
-                    schema_scopes,
-                    schema_scope_constraints,
+                leafs_list.append(leafs)
+
+        else:
+            for _ in range(num_interpretations):
+                recommendations = (
+                    self.document_recommendation_service.get_scope_recommendation(
+                        schema_scopes,
+                        schema_scope_constraints,
+                        document_content,
+                        tokens,
+                        document_id,
+                        model,
+                        req_params,
+                        raw_list if req_params.get("pass_interpretations") else None,
+                    )
                 )
-            )
-            raw_list.append(recommendations)
-            interpretation_list.append(postprocessed_recommendations)
+
+                postprocessed_recommendations = (
+                    self.scope_postprocess_service.postprocess_scope_tree(
+                        recommendations,
+                        tokens,
+                        schema_scopes,
+                        schema_scope_constraints,
+                    )
+                )
+                raw_list.append(recommendations)
+                interpretation_list.append(postprocessed_recommendations)
         return interpretation_list
 
     def save_scope_recommendations(
@@ -420,7 +564,9 @@ class ScopeService:
         scope_id_mapping = {}
         root = self.get_scope_tree_by_document_edit_id(document_edit_id)
         scope_id_mapping[None] = root["id"]
-
+        postprocessed_recommendations = self.tree_to_flat(
+            self.rec_to_tree(postprocessed_recommendations)
+        )
         for recommendation in postprocessed_recommendations:
             try:
                 if recommendation["schema_scope"]["id"] == root["schema_scope"]["id"]:
@@ -441,7 +587,7 @@ class ScopeService:
                 )
         return self.get_scope_tree_by_document_edit_id(document_edit_id)
 
-    def get_scope_recommendations(self, document_edit_id, model, params):
+    def get_scope_recommendations(self, document_edit_id, model, params, leafs):
         schema = self.schema_service.get_schema_by_document_edit(document_edit_id)
         schema_scopes = self.schema_scope_service.get_schema_scopes_by_schema_id(
             schema.id
@@ -459,15 +605,31 @@ class ScopeService:
             "tokens"
         ]
 
-        recommendations = self.document_recommendation_service.get_scope_recommendation(
-            schema_scopes,
-            schema_scope_constraints,
-            document_edit.document.content,
-            tokens,
-            document_edit.document.id,
-            model,
-            req_params=params,
-        )
+        if leafs:
+            recommendations = (
+                self.document_recommendation_service.get_scope_recommendation_branches(
+                    schema_scopes,
+                    schema_scope_constraints,
+                    document_edit.document.content,
+                    tokens,
+                    leafs,
+                    document_edit.document.id,
+                    model,
+                    req_params=params,
+                )
+            )
+        else:
+            recommendations = (
+                self.document_recommendation_service.get_scope_recommendation(
+                    schema_scopes,
+                    schema_scope_constraints,
+                    document_edit.document.content,
+                    tokens,
+                    document_edit.document.id,
+                    model,
+                    req_params=params,
+                )
+            )
         recommendations = self.scope_postprocess_service.postprocess_scope_tree(
             recommendations,
             tokens,
@@ -637,7 +799,6 @@ class ScopeService:
                 )
             )
             if violations == 0:
-
                 combo_trees.append(compare_tree)
         return combo_trees
 

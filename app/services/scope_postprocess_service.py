@@ -4,7 +4,53 @@ from collections import defaultdict
 from app.file_logger import logger
 
 
+class Counter:
+    max_token_exceeded = 0
+    root_missing = 0
+    first_child_later_start = 0
+    last_child_earlier_end = 0
+    gaps_in_between = 0
+    child_exceeding_parent = 0
+    horizontal_unmerged = 0
+    vertical_unmerged = 0
+    parent_child_forbidden = 0
+    too_many_children = 0
+    too_few_children = 0
+    scope_overlapping = 0
+    wrong_tree_position = 0
+    total_scopes = 0
+    total_scopes_postprocessed = 0
+
+    def log_concept_violations(self):
+        log_message = f"""
+         Multiple Count
+             Structural Scope Tree Violations:
+             - max_token_exceeded: {self.max_token_exceeded}
+             - root_missing: {self.root_missing}
+             - first_child_later_start: {self.first_child_later_start}
+             - last_child_earlier_end: {self.last_child_earlier_end}
+             - gaps_in_between: {self.gaps_in_between}
+             - child_exceeding_parent: {self.child_exceeding_parent} 
+             - parent_child_forbidden: {self.parent_child_forbidden}
+             - too_many_children: {self.too_many_children}
+             - too_few_children: {self.too_few_children}
+             - scope_overlapping: {self.scope_overlapping}
+             - wrong_tree_position: {self.wrong_tree_position}
+    
+             Semantic Scope Tree Violations:
+             - horizontal_unmerged: {self.horizontal_unmerged}
+             - vertical_unmerged: {self.vertical_unmerged}
+    
+             Scopes:
+             - total_scopes: {self.total_scopes}
+             - total_scopes_postprocessed: {self.total_scopes_postprocessed}
+             """
+        logger.info(log_message)
+
+
 class ScopePostprocessService:
+    counter = Counter()
+
     def postprocess_scope_tree(
         self,
         scope_recommendations,
@@ -38,6 +84,7 @@ class ScopePostprocessService:
                 scope_recommendations,
                 schema_scope_constraint_dict,
                 token_index_dict,
+                self.counter,
             )
 
         scope_recommendations = self.__add_root(
@@ -100,6 +147,8 @@ class ScopePostprocessService:
                 scope["token_end"] = max_token
             if scope["schema_scope"]["type"] == "root":
                 scope["parent_scope_id"] = None
+                scope["token_start"] = token_index_dict[0]
+                scope["token_end"] = max_token
                 root = scope
         if root:
             return scope_recommendations
@@ -538,6 +587,7 @@ class _ViolationCounter:
         scope_recommendations,
         schema_scope_constraint_dict,
         token_index_dict,
+        counter,
     ):
         parent_children_dict = {
             scope_recommendation["id"]: []
@@ -564,6 +614,10 @@ class _ViolationCounter:
         for scope in scope_recommendations:
             if scope["schema_scope"]["type"] == "root":
                 self.root_missing = False
+                if scope["token_start"]["document_index"] != 0:
+                    self.first_child_later_start += 1
+                if scope["token_end"]["document_index"] != len(token_index_dict) - 1:
+                    self.last_child_earlier_end += 1
                 break
 
         # Check if max token is exceeded
@@ -687,6 +741,21 @@ class _ViolationCounter:
             ):
                 self.too_many_children += 1
 
+        counter.max_token_exceeded += self.max_token_exceeded
+        counter.root_missing += self.root_missing if self.root_missing else 0
+        counter.first_child_later_start += self.first_child_later_start
+        counter.last_child_earlier_end += self.last_child_earlier_end
+        counter.gaps_in_between += self.gaps_in_between
+        counter.child_exceeding_parent += self.child_exceeding_parent
+        counter.horizontal_unmerged += self.horizontal_unmerged
+        counter.vertical_unmerged += self.vertical_unmerged
+        counter.parent_child_forbidden += self.parent_child_forbidden
+        counter.too_many_children += self.too_many_children
+        counter.too_few_children += self.too_few_children
+        counter.scope_overlapping += self.scope_overlapping
+        counter.wrong_tree_position += self.wrong_tree_position
+        counter.total_scopes += self.total_scopes
+        counter.total_scopes_postprocessed += self.total_scopes_postprocessed
         return recommendation_id_dict.values()
 
 
@@ -699,7 +768,7 @@ def _find_best_parent(scope, recommendation_id_dict):
         if scope["parent_scope_id"] == scope_rec["id"]:
             parent = scope_rec
 
-    if (
+    if best_parent and (
         best_parent["token_start"]["document_index"]
         > scope["token_end"]["document_index"]
         or best_parent["token_end"]["document_index"]

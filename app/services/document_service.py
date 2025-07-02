@@ -245,6 +245,40 @@ class DocumentService:
             saved_interpretations.append(scope_tree)
         return saved_interpretations
 
+    def get_scope_interpretations_branches(
+        self,
+        user_id,
+        document_id,
+        model,
+        num_interpretations,
+        req_params,
+        leafs_id,
+        leafs,
+    ):
+        if not leafs:
+            leafs = self.scope_service.get_leafs_by_document_edit_id(leafs_id)
+
+        document = self.get_document_by_id(document_id, user_id)
+        scope_interpretations = self.scope_service.get_scope_interpretations_branches(
+            document["id"],
+            document["content"],
+            model,
+            num_interpretations,
+            req_params,
+            leafs,
+        )
+
+        saved_interpretations = []
+        for interpretation in scope_interpretations:
+            doc_edit = self.document_edit_service.create_document_edit(
+                user_id, document_id
+            )
+            scope_tree = self.scope_service.save_scope_recommendations(
+                doc_edit["id"], interpretation
+            )
+            saved_interpretations.append(scope_tree)
+        return saved_interpretations
+
 
 document_service = DocumentService(
     DocumentRepository(), token_service, document_edit_service, scope_service

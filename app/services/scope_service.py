@@ -170,10 +170,9 @@ class ScopeService:
             document_edit_id=document_edit_id,
         )
 
-    def scope_tree_similarity_obj(self, ref, comp, tokens, schema_scopes):
+    def scope_tree_similarity_obj(self, ref, comp, tokens, schema_scopes, method=None):
         reference_leafs = self.__get_tree_leafs_with_parents_rec(ref)
         comparison_leafs = self.__get_tree_leafs_with_parents_rec(comp)
-
         token_dict = {token["document_index"]: token for token in tokens}
         process_relevant_schema_scope_ids = [
             s["id"] for s in schema_scopes if s["process_relevant"]
@@ -183,15 +182,23 @@ class ScopeService:
         similarity_matrix = np.zeros((len(reference_leafs), len(comparison_leafs)))
         for i, r in enumerate(reference_leafs):
             for j, c in enumerate(comparison_leafs):
-                similarity_matrix[i, j] = self.__scope_similarity(
-                    r, c, process_relevant_schema_scope_ids
-                )
+                if method == "only_leafs":
+                    similarity_matrix[i, j] = self.__scope_similarity_leafs(r, c)
+                elif method == "lcs":
+                    similarity_matrix[i, j] = self.__scope_similarity_partial_path(
+                        r, c, process_relevant_schema_scope_ids
+                    )
+                else:
+                    similarity_matrix[i, j] = self.__scope_similarity(
+                        r, c, process_relevant_schema_scope_ids
+                    )
+
         row_ind, col_ind = linear_sum_assignment(-similarity_matrix)
         # logging.info(row_ind)
         # logging.info(col_ind)
         # Compute final score
         total_sim = similarity_matrix[row_ind, col_ind].sum()
-        logging.info(total_sim / min_len)
+        # logging.info(total_sim / min_len)
 
         similarity_per_scope = []
         for i, leaf in enumerate(reference_leafs):
@@ -269,7 +276,7 @@ class ScopeService:
         }
 
     def scope_tree_similarity(
-        self, reference_document_edit_id, comparison_document_edit_id
+        self, reference_document_edit_id, comparison_document_edit_id, method
     ):
         reference_document_edit = self.__scope_repository.get_object_by_id(
             DocumentEdit, reference_document_edit_id
@@ -303,11 +310,14 @@ class ScopeService:
             comparison_document_edit_id
         )
         return self.scope_tree_similarity_obj(
-            reference_tree_scopes, comparison_tree_scopes, tokens, schema_scopes
+            reference_tree_scopes, comparison_tree_scopes, tokens, schema_scopes, method
         )
 
     def scope_tree_similarity_list(
-        self, reference_document_edit_id_list, comparison_document_edit_id_list
+        self,
+        reference_document_edit_id_list,
+        comparison_document_edit_id_list,
+        method=None,
     ):
         first_document_edit_id = self.__scope_repository.get_object_by_id(
             DocumentEdit, reference_document_edit_id_list[0]
@@ -347,7 +357,7 @@ class ScopeService:
         for i, r in enumerate(reference_tree_scopes_list):
             for j, c in enumerate(comparison_tree_scopes_list):
                 similarity_matrix[i, j] = self.scope_tree_similarity_obj(
-                    r, c, tokens, schema_scopes
+                    r, c, tokens, schema_scopes, method
                 )[  # self.scope_tree_similarity_obj_branches(r, c)
                     "total_similarity"
                 ]
@@ -359,10 +369,71 @@ class ScopeService:
             similarity_matrix, axis=0
         )  # max similarity of llm to any human annotation
 
-        logging.info(f"Diversity: {max_per_row}, Average: {np.mean(max_per_row)}")
-        logging.info(f"Quality: {max_per_column}, Average: {np.mean(max_per_column)}")
         logging.info(
-            f"Overall similarity: {np.mean([np.mean(max_per_row), np.mean(max_per_column)])}"
+            f"Diversity: {[round(float(mpr), 4) for mpr in max_per_row]}, Average: {round(np.mean(max_per_row),4)}, Standard Deviation: {round(np.std(max_per_row), 4)}"
+        )
+        logging.info(
+            f"Quality: {[round(float(mpc), 4) for mpc in max_per_column]}, Average: {round(np.mean(max_per_column),4)}, Standard Deviation: {round(np.std(max_per_column), 4)}"
+        )
+        logging.info(
+            f"Overall similarity: {round(np.mean([np.mean(max_per_row), np.mean(max_per_column)]), 4)}"
+        )
+
+        return None
+
+    def scope_tree_similarity_list_self(
+        self,
+        reference_document_edit_id_list,
+    ):
+        first_document_edit_id = self.__scope_repository.get_object_by_id(
+            DocumentEdit, reference_document_edit_id_list[0]
+        )
+
+        tokens = self.token_service.get_tokens_by_document(
+            first_document_edit_id.document_id
+        )["tokens"]
+
+        schema = self.schema_service.get_schema_by_document_edit(
+            first_document_edit_id.id
+        )
+
+        schema_scopes = self.schema_scope_service.get_schema_scopes_by_schema_id(
+            schema.id
+        )
+
+        reference_tree_scopes_list = [
+            self.get_scope_tree_by_document_edit_id(
+                reference_document_edit_id
+            )  # self.get_scope_list_by_document_edit_id
+            for reference_document_edit_id in reference_document_edit_id_list
+        ]
+
+        similarity_matrix = []
+        similarity_matrix_lcs = []
+        for i, r in enumerate(reference_tree_scopes_list):
+            for j, c in enumerate(reference_tree_scopes_list):
+                if i < j:
+
+                    similarity_matrix.append(
+                        self.scope_tree_similarity_obj(
+                            r, c, tokens, schema_scopes
+                        )[  # self.scope_tree_similarity_obj_branches(r, c)
+                            "total_similarity"
+                        ]
+                    )
+                    similarity_matrix_lcs.append(
+                        self.scope_tree_similarity_obj(
+                            r, c, tokens, schema_scopes, method="lcs"
+                        )[  # self.scope_tree_similarity_obj_branches(r, c)
+                            "total_similarity"
+                        ]
+                    )
+
+        # logging.info(
+        #    f"conservative: {[round(float(s),4) for s in similarity_matrix]}, Average: {round(np.mean(similarity_matrix), 4)}, Standard Deviation: {round(np.std(similarity_matrix), 4)}"
+        # )
+        logging.info(
+            f"lcs: {[round(float(s),4) for s in similarity_matrix_lcs]}, Average: {round(np.mean(similarity_matrix_lcs),4)}, Standard Deviation: {round(np.std(similarity_matrix_lcs), 4)}"
         )
 
         return None
@@ -398,43 +469,92 @@ class ScopeService:
                 reference_scope["path"][-1] not in process_relevant_schema_scope_ids
                 and reference_scope["path"][-1] == comparison_scope["path"][-1]
             ):
-                pass
+                return self.__jaccard_token_overlap(reference_scope, comparison_scope)
             else:
                 return 0
-        reference_tokens = set(
-            range(reference_scope["token_start"], reference_scope["token_end"] + 1)
-        )
-        comparison_tokens = set(
-            range(comparison_scope["token_start"], comparison_scope["token_end"] + 1)
-        )
 
-        intersection = reference_tokens & comparison_tokens
-        union = reference_tokens | comparison_tokens
+        score = 1
+        ref_children_path = reference_scope["children_num_path"][1:-1]
+        comp_children_path = comparison_scope["children_num_path"][1:-1]
+        ref_token_path = reference_scope["token_path"][1:]
+        comp_token_path = comparison_scope["token_path"][1:]
+        if len(reference_scope["path"][1:-1]):
+            for i in range(len(reference_scope["path"][1:-1])):
+                score *= self.__jaccard_token_overlap(
+                    ref_token_path[i], comp_token_path[i]
+                )
+                # (
+                # float(ref_children_path[i]) / comp_children_path[i]
+                # if ref_children_path[i] < comp_children_path[i]
+                # else float(comp_children_path[i]) / ref_children_path[i]
+                # )
 
-        if not union:
-            return 0.0
-        return len(intersection) / len(union)
+        return self.__jaccard_token_overlap(reference_scope, comparison_scope, score)
+
+    def __scope_similarity_leafs(self, reference_scope, comparison_scope):
+        if reference_scope["path"][-1] != comparison_scope["path"][-1]:
+            return 0
+        return self.__jaccard_token_overlap(reference_scope, comparison_scope)
 
     def __scope_similarity_partial_path(
         self, reference_scope, comparison_scope, process_relevant_schema_scope_ids
     ):
+        ref_path = reference_scope["path"][1:]
+        comp_path = comparison_scope["path"][1:]
+        ref_children_path = reference_scope["children_num_path"][1:]
+        comp_children_path = comparison_scope["children_num_path"][1:]
+        ref_token_path = reference_scope["token_path"][1:]
+        comp_token_path = comparison_scope["token_path"][1:]
 
-        reference_scope["path"] = reference_scope["path"][1:]
-        comparison_scope["path"] = comparison_scope["path"][1:]
-        similarity = 0
-        if (  # irrelevant/related: Layer does not matter
-            reference_scope["path"][-1] not in process_relevant_schema_scope_ids
-            and reference_scope["path"][-1] == comparison_scope["path"][-1]
+        def __sequence_matching(ref, comp):
+
+            max_len = max(len(ref), len(comp))
+            if max_len == 0:
+                return 1
+            m, n = len(ref), len(comp)
+            matrix = np.zeros((m + 1, n + 1))
+            for i in range(m):
+                for j in range(n):
+                    if ref[i] == comp[j]:
+                        score = self.__jaccard_token_overlap(
+                            ref_token_path[i], comp_token_path[j]
+                        )
+                        # (
+                        # float(ref_children_path[i]) / comp_children_path[j]
+                        # if ref_children_path[i] < comp_children_path[j]
+                        # else float(comp_children_path[j]) / ref_children_path[i]
+                        # )
+                    else:
+                        score = 0.0
+
+                    if matrix[i + 1][j + 1] < matrix[i][j] + score:
+                        matrix[i + 1][j + 1] = matrix[i][j] + score
+
+                    if matrix[i + 1][j] < matrix[i][j]:
+                        matrix[i + 1][j] = matrix[i][j]
+
+                    if matrix[i][j + 1] < matrix[i][j]:
+                        matrix[i][j + 1] = matrix[i][j]
+            return np.max(matrix) / float(max_len)
+
+        token_overlap = self.__jaccard_token_overlap(
+            reference_scope, comparison_scope, 1
+        )
+        if token_overlap == 0:
+            return 0
+        if reference_scope["path"][-1] != comparison_scope["path"][-1]:
+            similarity = 0
+        elif (
+            reference_scope["path"][-1] == comparison_scope["path"][-1]
+            and reference_scope["path"][-1] not in process_relevant_schema_scope_ids
         ):
             similarity = 1
         else:
-            max_len = max(len(reference_scope["path"]), len(comparison_scope["path"]))
-            for r, c in zip(reference_scope["path"], comparison_scope["path"]):
-                if r != c:
-                    break
-                similarity += 1
-            similarity /= max_len
+            similarity = __sequence_matching(ref_path[:-1], comp_path[:-1])
 
+        return similarity * token_overlap
+
+    def __jaccard_token_overlap(self, reference_scope, comparison_scope, similarity=1):
         reference_tokens = set(
             range(reference_scope["token_start"], reference_scope["token_end"] + 1)
         )
@@ -449,8 +569,22 @@ class ScopeService:
             return 0.0
         return len(intersection) / len(union) * similarity
 
-    def __get_tree_leafs_with_parents_rec(self, scope_tree, path=None):
+    def __get_tree_leafs_with_parents_rec(
+        self, scope_tree, path=None, children_num_path=None, token_path=None
+    ):
         path = (path or []) + [scope_tree["schema_scope"]["id"]]
+        children_num = 0
+        for child in scope_tree["children"]:
+            if child["schema_scope"]["process_relevant"]:
+                children_num += 1
+
+        children_num_path = (children_num_path or []) + [children_num]
+        token_path = (token_path or []) + [
+            {
+                "token_start": scope_tree["token_start"]["document_index"],
+                "token_end": scope_tree["token_end"]["document_index"],
+            }
+        ]
         leaf_scopes = []
         if not scope_tree["children"]:
             return [
@@ -458,10 +592,16 @@ class ScopeService:
                     "path": path,
                     "token_start": scope_tree["token_start"]["document_index"],
                     "token_end": scope_tree["token_end"]["document_index"],
+                    "children_num_path": children_num_path,
+                    "token_path": token_path,
                 }
             ]
         for child in scope_tree["children"]:
-            leaf_scopes.extend(self.__get_tree_leafs_with_parents_rec(child, path))
+            leaf_scopes.extend(
+                self.__get_tree_leafs_with_parents_rec(
+                    child, path, children_num_path, token_path
+                )
+            )
         return leaf_scopes
 
     def __get_schema_scopes_without_children(self, schema_scope_constraints):
@@ -489,7 +629,7 @@ class ScopeService:
         raw_list = []
         req_params = dict(req_params)
         req_params["cache_datetime"] = 1
-        if req_params.get("bottom_up") and req_params.get("pass_interpretations"):
+        if req_params.get("bottom_up"):
             del req_params["bottom_up"]
             req_params["only_leafs"] = 1
             leafs_list = []
@@ -502,10 +642,10 @@ class ScopeService:
                     document_id,
                     model,
                     req_params,
-                    leafs_list,
+                    leafs_list if req_params.get("pass_interpretations") else None,
                     map_to_scopes=False,
                 )
-                for _ in range(0, 2):
+                for _ in range(0, 2 if req_params.get("pass_interpretations") else 1):
                     scope_recommendation = self.document_recommendation_service.get_scope_recommendation_branches(
                         schema_scopes,
                         schema_scope_constraints,
@@ -515,7 +655,7 @@ class ScopeService:
                         document_id,
                         model,
                         req_params,
-                        raw_list,
+                        raw_list if req_params.get("pass_interpretations") else None,
                     )
                     raw_list.append(scope_recommendation)
                     postprocessed_recommendations = (
@@ -555,6 +695,72 @@ class ScopeService:
                 )
                 raw_list.append(recommendations)
                 interpretation_list.append(postprocessed_recommendations)
+        self.scope_postprocess_service.counter.log_concept_violations()
+        return interpretation_list
+
+    def get_scope_interpretations_branches(
+        self,
+        document_id,
+        document_content,
+        model,
+        num_interpretations,
+        req_params,
+        leafs,
+    ):
+        schema = self.schema_service.get_schema_by_document(document_id)
+        schema_scopes = self.schema_scope_service.get_schema_scopes_by_schema_id(
+            schema.id
+        )
+        schema_scope_constraints = (
+            self.schema_scope_service.get_schema_scope_constraints_by_schema_id(
+                schema.id
+            )
+        )
+
+        tokens = self.token_service.get_tokens_by_document(document_id)["tokens"]
+        interpretation_list = []
+        raw_list = []
+        req_params = dict(req_params)
+        req_params["cache_datetime"] = 1
+
+        if req_params.get("only_text"):
+            for leaf in leafs:
+                leaf["text"] = "".join(
+                    token["text"]
+                    for token in tokens[
+                        leaf["startTokenDocumentIndex"] : leaf["endTokenDocumentIndex"]
+                        + 1
+                    ]
+                )
+                del leaf["startTokenDocumentIndex"]
+                del leaf["endTokenDocumentIndex"]
+
+        for _ in range(num_interpretations):
+            recommendations = (
+                self.document_recommendation_service.get_scope_recommendation_branches(
+                    schema_scopes,
+                    schema_scope_constraints,
+                    document_content,
+                    tokens,
+                    leafs,
+                    document_id,
+                    model,
+                    req_params,
+                    raw_list if req_params.get("pass_interpretations") else None,
+                )
+            )
+
+            postprocessed_recommendations = (
+                self.scope_postprocess_service.postprocess_scope_tree(
+                    recommendations,
+                    tokens,
+                    schema_scopes,
+                    schema_scope_constraints,
+                )
+            )
+            raw_list.append(recommendations)
+            interpretation_list.append(postprocessed_recommendations)
+        self.scope_postprocess_service.counter.log_concept_violations()
         return interpretation_list
 
     def save_scope_recommendations(
@@ -585,6 +791,7 @@ class ScopeService:
                 logging.info(
                     "Failed to create scope: " + str(recommendation) + ", " + str(e)
                 )
+        logging.info(f"Recommendations created.")
         return self.get_scope_tree_by_document_edit_id(document_edit_id)
 
     def get_scope_recommendations(self, document_edit_id, model, params, leafs):
@@ -949,6 +1156,12 @@ class ScopeService:
 
     def delete_scope_tree(self, document_edit_id):
         return self.__scope_repository.delete_scope_tree(document_edit_id)
+
+    def get_leafs_by_document_edit_id(self, document_edit_id):
+        scope_list = self.get_scope_list_by_document_edit_id(document_edit_id)
+        parent_ids = [scope["parent_scope_id"] for scope in scope_list]
+        leafs = [leaf for leaf in scope_list if leaf["id"] not in parent_ids]
+        return leafs
 
 
 scope_service = ScopeService(

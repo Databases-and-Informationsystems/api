@@ -779,7 +779,7 @@ class DocumentEditService:
             # Avoid same scope ids when building combinations
             for scope in interpretation:
                 scope["id"] += 1000 * i
-                if scope["parent_scope_id"]:
+                if scope["parent_scope_id"] is not None:
                     scope["parent_scope_id"] += 1000 * i
 
             interpretation_tree.append(self.scope_service.rec_to_tree(interpretation))
@@ -800,7 +800,7 @@ class DocumentEditService:
                     tokens,
                     schema_scopes,
                     schema_scope_constraints,
-                    count_violations=False,
+                    count_violations=True,
                 )
             )
         postprocessed_combinations = []

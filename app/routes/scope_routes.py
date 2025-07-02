@@ -171,7 +171,7 @@ class ScopeSimilarityResource(ScopeBaseRoute):
         user_id = self.user_service.get_logged_in_user_id()
         self.user_service.check_user_document_edit_accessible(user_id, document_edit_id)
         response = self.service.scope_tree_similarity(
-            document_edit_id, compare_document_edit_id
+            document_edit_id, compare_document_edit_id, request.args.get("method")
         )
 
         return response
@@ -191,8 +191,27 @@ class ScopeSimilarityListResource(ScopeBaseRoute):
         """
         ref_interpretation_ids = request.get_json().get("ref_interpretations")
         comp_interpretation_ids = request.get_json().get("comp_interpretations")
+        method = request.args.get("method")
         response = self.service.scope_tree_similarity_list(
-            ref_interpretation_ids, comp_interpretation_ids
+            ref_interpretation_ids, comp_interpretation_ids, method
         )
+
+        return response
+
+
+@ns.route("/similarity_self")
+@ns.doc(params={"document_edit_id": "A Document Edit ID"})
+@ns.doc(params={"compare_document_edit_id": "Document Edit ID to compare with"})
+@ns.response(403, "Authorization required")
+@ns.response(404, "Data not found")
+class ScopeSimilaritySelfListResource(ScopeBaseRoute):
+
+    @ns.marshal_with(scope_similarity_output_dto)
+    def get(self):
+        """
+        Compute scope tree similarity between two lists of documents edits
+        """
+        ref_interpretation_ids = request.get_json().get("ref_interpretations")
+        response = self.service.scope_tree_similarity_list_self(ref_interpretation_ids)
 
         return response

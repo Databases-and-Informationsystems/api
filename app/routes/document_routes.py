@@ -330,3 +330,66 @@ class ScopeInterpretationResource(DocumentBaseRoute):
         return self.service.get_scope_interpretations(
             user_id, document_id, model, int(num_interpretations), request.args
         )
+
+
+@ns.route("/interpretations/branches/<int:document_id>")
+@ns.doc(params={"document_edit_id": "A Document ID"})
+@ns.response(403, "Authorization required")
+@ns.response(404, "Data not found")
+class ScopeInterpretationBranchesResource(DocumentBaseRoute):
+
+    @ns.marshal_with(scope_output_dto, as_list=True)
+    @ns.doc(
+        params={
+            "model": {
+                "description": "Recommendation Model that should be used.",
+                "required": False,
+            },
+            "num_interpretations": {
+                "description": "How many interpretations should be generated. Maximum: 10. Default: 4",
+                "required": False,
+            },
+            "pass_interpretations": {
+                "description": "Shall interpretations be passed to the model? Default: False",
+                "required": False,
+            },
+            "temperature": {
+                "description": f"Temperature of the model",
+                "required": False,
+            },
+            "with_text": {
+                "description": f"Include the text in the prompt (only tokens otherwise)? (default: false)",
+                "required": False,
+            },
+            "only_text": {
+                "description": f"Only pass text instead of tokens to the llm? (default: false)",
+                "required": False,
+            },
+        }
+    )
+    def post(self, document_id):
+        """
+        Generate recommendations for scopes of a document edit
+        """
+        user_id = self.user_service.get_logged_in_user_id()
+        self.user_service.check_user_document_accessible(user_id, document_id)
+        logger.info(request.args)
+        logger.info(f"document_id: {document_id}")
+        model = request.args.get("model")
+        num_interpretations = request.args.get("num_interpretations")
+        document_edit_leafs_id = request.args.get("leafs_id")
+        leafs = request.get_json().get("leafs")
+
+        if num_interpretations:
+            self.verify_positive_integer(num_interpretations)
+        else:
+            num_interpretations = 2
+        return self.service.get_scope_interpretations_branches(
+            user_id,
+            document_id,
+            model,
+            int(num_interpretations),
+            request.args,
+            document_edit_leafs_id,
+            leafs,
+        )

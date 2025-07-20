@@ -257,24 +257,6 @@ class ScopeService:
             "similarity_per_scope": similarity_per_scope,
         }
 
-    def scope_tree_similarity_obj_branches(self, ref, comp):
-        min_len = min(len(ref), len(comp))
-        similarity_matrix = np.zeros((len(ref), len(comp)))
-        for i, r in enumerate(ref):
-            for j, c in enumerate(comp):
-                similarity_matrix[i, j] = self.__scope_similarity_branches(r, c)
-        row_ind, col_ind = linear_sum_assignment(-similarity_matrix)
-        total_sim = similarity_matrix[row_ind, col_ind].sum()
-        logging.info(total_sim / min_len)
-
-        logging.info(total_sim / len(ref))
-        logging.info(total_sim / len(comp))
-        logging.info(len(ref))
-
-        return {
-            "total_similarity": total_sim / min_len,
-        }
-
     def scope_tree_similarity(
         self, reference_document_edit_id, comparison_document_edit_id, method
     ):
@@ -382,8 +364,7 @@ class ScopeService:
         return None
 
     def scope_tree_similarity_list_self(
-        self,
-        reference_document_edit_id_list,
+        self, reference_document_edit_id_list, method="lcs"
     ):
         first_document_edit_id = self.__scope_repository.get_object_by_id(
             DocumentEdit, reference_document_edit_id_list[0]
@@ -408,58 +389,24 @@ class ScopeService:
             for reference_document_edit_id in reference_document_edit_id_list
         ]
 
-        similarity_matrix = []
         similarity_matrix_lcs = []
         for i, r in enumerate(reference_tree_scopes_list):
             for j, c in enumerate(reference_tree_scopes_list):
                 if i < j:
 
-                    similarity_matrix.append(
-                        self.scope_tree_similarity_obj(
-                            r, c, tokens, schema_scopes
-                        )[  # self.scope_tree_similarity_obj_branches(r, c)
-                            "total_similarity"
-                        ]
-                    )
                     similarity_matrix_lcs.append(
                         self.scope_tree_similarity_obj(
-                            r, c, tokens, schema_scopes, method="lcs"
+                            r, c, tokens, schema_scopes, method=method
                         )[  # self.scope_tree_similarity_obj_branches(r, c)
                             "total_similarity"
                         ]
                     )
 
-        # logging.info(
-        #    f"conservative: {[round(float(s),4) for s in similarity_matrix]}, Average: {round(np.mean(similarity_matrix), 4)}, Standard Deviation: {round(np.std(similarity_matrix), 4)}"
-        # )
         logging.info(
             f"lcs: {[round(float(s),4) for s in similarity_matrix_lcs]}, Average: {round(np.mean(similarity_matrix_lcs),4)}, Standard Deviation: {round(np.std(similarity_matrix_lcs), 4)}"
         )
 
         return None
-
-    def __scope_similarity_branches(self, reference_scope, comparison_scope):
-        if reference_scope["scope_type"] != comparison_scope["scope_type"]:
-            return 0
-        reference_tokens = set(
-            range(
-                reference_scope["startTokenDocumentIndex"],
-                reference_scope["endTokenDocumentIndex"] + 1,
-            )
-        )
-        comparison_tokens = set(
-            range(
-                comparison_scope["startTokenDocumentIndex"],
-                comparison_scope["endTokenDocumentIndex"] + 1,
-            )
-        )
-
-        intersection = reference_tokens & comparison_tokens
-        union = reference_tokens | comparison_tokens
-
-        if not union:
-            return 0.0
-        return len(intersection) / len(union)
 
     def __scope_similarity(
         self, reference_scope, comparison_scope, process_relevant_schema_scope_ids
@@ -723,17 +670,17 @@ class ScopeService:
         req_params = dict(req_params)
         req_params["cache_datetime"] = 1
 
-        if req_params.get("only_text"):
-            for leaf in leafs:
-                leaf["text"] = "".join(
-                    token["text"]
-                    for token in tokens[
-                        leaf["startTokenDocumentIndex"] : leaf["endTokenDocumentIndex"]
-                        + 1
-                    ]
-                )
-                del leaf["startTokenDocumentIndex"]
-                del leaf["endTokenDocumentIndex"]
+        # if req_params.get("only_text"):
+        #    for leaf in leafs:
+        #        leaf["text"] = "".join(
+        #            token["text"]
+        #            for token in tokens[
+        #                leaf["startTokenDocumentIndex"] : leaf["endTokenDocumentIndex"]
+        #                + 1
+        #            ]
+        #        )
+        #        del leaf["startTokenDocumentIndex"]
+        #        del leaf["endTokenDocumentIndex"]
 
         for _ in range(num_interpretations):
             recommendations = (

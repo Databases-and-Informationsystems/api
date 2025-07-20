@@ -212,6 +212,8 @@ class ScopeSimilaritySelfListResource(ScopeBaseRoute):
         Compute scope tree similarity between two lists of documents edits
         """
         ref_interpretation_ids = request.get_json().get("ref_interpretations")
-        response = self.service.scope_tree_similarity_list_self(ref_interpretation_ids)
+        response = self.service.scope_tree_similarity_list_self(
+            ref_interpretation_ids, request.args.get("method")
+        )
 
         return response

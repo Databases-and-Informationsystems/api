@@ -467,6 +467,7 @@ class DocumentRecommendationService:
         ]
         for leaf in leafs:
             if leaf["id"] not in scope_ids:
+                leaf["parent_scope_id"] = None
                 scope_recommendations.append(leaf)
         return self.map_recommendations_to_scopes(
             scope_recommendations, tokens, schema_scopes

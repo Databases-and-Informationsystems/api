@@ -589,6 +589,10 @@ class _ViolationCounter:
         token_index_dict,
         counter,
     ):
+        for scope in scope_recommendations:
+            if scope["schema_scope"]["type"] == "root":
+                scope["parent_scope_id"] = None
+
         parent_children_dict = {
             scope_recommendation["id"]: []
             for scope_recommendation in scope_recommendations

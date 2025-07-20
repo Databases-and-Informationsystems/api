@@ -252,21 +252,25 @@ class DocumentService:
         model,
         num_interpretations,
         req_params,
-        leafs_id,
-        leafs,
+        leafs_ids,
     ):
-        if not leafs:
+        scope_interpretations = []
+        for leafs_id in leafs_ids:
             leafs = self.scope_service.get_leafs_by_document_edit_id(leafs_id)
 
-        document = self.get_document_by_id(document_id, user_id)
-        scope_interpretations = self.scope_service.get_scope_interpretations_branches(
-            document["id"],
-            document["content"],
-            model,
-            num_interpretations,
-            req_params,
-            leafs,
-        )
+            document = self.get_document_by_id(document_id, user_id)
+            generated_interpretations = (
+                self.scope_service.get_scope_interpretations_branches(
+                    document["id"],
+                    document["content"],
+                    model,
+                    num_interpretations,
+                    req_params,
+                    leafs,
+                )
+            )
+
+            scope_interpretations.extend(generated_interpretations)
 
         saved_interpretations = []
         for interpretation in scope_interpretations:

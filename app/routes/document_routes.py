@@ -377,8 +377,7 @@ class ScopeInterpretationBranchesResource(DocumentBaseRoute):
         logger.info(f"document_id: {document_id}")
         model = request.args.get("model")
         num_interpretations = request.args.get("num_interpretations")
-        document_edit_leafs_id = request.args.get("leafs_id")
-        leafs = request.get_json().get("leafs")
+        document_edit_leafs_ids = request.args.get("leafs_id").split(",")
 
         if num_interpretations:
             self.verify_positive_integer(num_interpretations)
@@ -390,6 +389,5 @@ class ScopeInterpretationBranchesResource(DocumentBaseRoute):
             model,
             int(num_interpretations),
             request.args,
-            document_edit_leafs_id,
-            leafs,
+            document_edit_leafs_ids,
         )
